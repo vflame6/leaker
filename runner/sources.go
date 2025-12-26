@@ -1,6 +1,9 @@
-package sources
+package runner
+
+import "github.com/vflame6/leaker/runner/sources"
 
 type Source interface {
+	Run(email string) <-chan sources.Result
 
 	// Name returns the name of the source. It is preferred to use lower case names.
 	Name() string
@@ -14,9 +17,9 @@ type Source interface {
 
 	AddApiKeys([]string)
 
-	GetRateLimit() string
+	GetRateLimit() int
 }
 
-var AllSources = []Source{
-	&
+var AllSources = [...]Source{
+	&sources.ProxyNova{},
 }
