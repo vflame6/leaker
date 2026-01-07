@@ -1,8 +1,8 @@
 package runner
 
 import (
+	"github.com/vflame6/leaker/logger"
 	"gopkg.in/yaml.v3"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +26,7 @@ func createProviderConfigYAML(configFilePath string) error {
 	}
 	defer func() {
 		if err := configFile.Close(); err != nil {
-			log.Printf("Error closing config file: %s", err)
+			logger.Errorf("Error closing config file: %s", err)
 		}
 	}()
 

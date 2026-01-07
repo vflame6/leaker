@@ -2,14 +2,14 @@ package runner
 
 import (
 	"fmt"
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
-	"log"
 	"sync"
 	"time"
 )
 
 func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error {
-	log.Printf("enumerating email %s", email)
+	logger.Infof("enumerating email %s", email)
 	results := make(chan sources.Result)
 
 	wg := &sync.WaitGroup{}
@@ -17,7 +17,11 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error
 	// Process the results in a separate goroutine
 	go func() {
 		for result := range results {
-			fmt.Printf("[%s] %s\n", result.Source, result.Value)
+			if result.Error != nil {
+				logger.Errorf("error enumerating email %s: %s", email, result.Error)
+				continue
+			}
+			WritePlainResult(r.options.Verbose, result.Source, result.Value)
 		}
 		wg.Done()
 	}()
@@ -43,10 +47,6 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error
 			go func(s sources.Source) {
 				defer wg.Done()
 				for result := range s.Run(email, session) {
-					if result.Error != nil {
-						log.Printf("[%s] %v\n", result.Source, result.Error)
-						continue
-					}
 					results <- result
 				}
 			}(s)

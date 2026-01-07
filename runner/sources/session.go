@@ -2,7 +2,7 @@ package sources
 
 import (
 	"crypto/tls"
-	"fmt"
+	"github.com/vflame6/leaker/logger"
 	"io"
 	"net"
 	"net/http"
@@ -37,11 +37,11 @@ func (s *Session) DiscardHTTPResponse(response *http.Response) {
 	if response != nil {
 		_, err := io.Copy(io.Discard, response.Body)
 		if err != nil {
-			fmt.Printf("Could not discard response body: %s\n", err)
+			logger.Errorf("Could not discard response body: %s\n", err)
 			return
 		}
 		if closeErr := response.Body.Close(); closeErr != nil {
-			fmt.Printf("Could not close response body: %s\n", closeErr)
+			logger.Errorf("Could not close response body: %s\n", closeErr)
 		}
 	}
 }

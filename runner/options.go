@@ -3,6 +3,7 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
 	"os"
 	"path/filepath"
@@ -25,9 +26,9 @@ type Options struct {
 }
 
 func listSources(options *Options) {
-	fmt.Printf("Current list of available sources. [%d]\n", len(AllSources))
-	fmt.Printf("Sources marked with an * require key(s) or token(s) to work.\n")
-	fmt.Printf("You can modify %s to configure your keys/tokens.\n\n", options.ProviderConfig)
+	logger.Infof("Current list of available sources. [%d]", len(AllSources))
+	logger.Infof("Sources marked with an * require key(s) or token(s) to work.")
+	logger.Infof("You can modify %s to configure your keys/tokens.\n", options.ProviderConfig)
 
 	for _, source := range AllSources {
 		sourceName := source.Name()
@@ -42,6 +43,17 @@ func listSources(options *Options) {
 // loadProvidersFrom runs the app with source config
 func (options *Options) loadProvidersFrom(location string) {
 	if err := UnmarshalFrom(location); err != nil && (!strings.Contains(err.Error(), "file doesn't exist") || errors.Is(err, os.ErrNotExist)) {
-		fmt.Printf("Could not read providers from %s: %s\n", location, err)
+		logger.Errorf("Could not read providers from %s: %s\n", location, err)
+	}
+}
+
+// ConfigureOutput configures the output on the screen
+func (options *Options) ConfigureOutput() {
+	// If the user desires verbose output, show verbose output
+	if options.Verbose {
+		logger.DefaultLogger.SetMaxLevel(logger.LevelVerbose)
+	}
+	if options.Quiet {
+		logger.DefaultLogger.SetMaxLevel(logger.LevelFatal)
 	}
 }

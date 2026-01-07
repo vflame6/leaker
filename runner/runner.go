@@ -2,9 +2,9 @@ package runner
 
 import (
 	"bufio"
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
 	"io"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -18,6 +18,8 @@ type Runner struct {
 // the configuration options, configuring sources, reading lists
 // and setting up loggers, etc.
 func NewRunner(options *Options) (*Runner, error) {
+	options.ConfigureOutput()
+
 	// --list-sources flag
 	if options.ListSources {
 		listSources(options)
@@ -26,17 +28,17 @@ func NewRunner(options *Options) (*Runner, error) {
 
 	if exists := utils.FileExists(defaultProviderConfigLocation); !exists {
 		if err := createProviderConfigYAML(defaultProviderConfigLocation); err != nil {
-			log.Printf("Could not create provider config file: %s\n", err)
+			logger.Errorf("Could not create provider config file: %s\n", err)
 		}
 	}
 
 	// Check if the application loading with any provider configuration, then take it
 	// Otherwise load the default provider config
 	if options.ProviderConfig != "" && utils.FileExists(options.ProviderConfig) {
-		log.Printf("Loading provider config from %s", options.ProviderConfig)
+		logger.Infof("Loading provider config from %s", options.ProviderConfig)
 		options.loadProvidersFrom(options.ProviderConfig)
 	} else {
-		log.Printf("Loading provider config from the default location: %s", defaultProviderConfigLocation)
+		logger.Infof("Loading provider config from the default location: %s", defaultProviderConfigLocation)
 		options.loadProvidersFrom(defaultProviderConfigLocation)
 	}
 
@@ -55,6 +57,7 @@ func (r *Runner) RunEnumeration() error {
 		return err
 	}
 
+	logger.Debugf("starting email enumeration from %s", r.options.Targets)
 	return r.EnumerateMultipleEmails(t)
 }
 
@@ -62,8 +65,6 @@ func (r *Runner) EnumerateMultipleEmails(reader io.Reader) error {
 	var err error
 	scanner := bufio.NewScanner(reader)
 	emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
-
-	log.Println("starting email enumeration")
 
 	for scanner.Scan() {
 		email := strings.ToLower(strings.TrimSpace(scanner.Text()))
@@ -80,7 +81,6 @@ func (r *Runner) EnumerateMultipleEmails(reader io.Reader) error {
 		return err
 	}
 
-	log.Println("finished email enumeration")
-
+	logger.Info("finished email enumeration")
 	return nil
 }

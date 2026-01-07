@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/alecthomas/kong"
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner"
-	"log"
 	"time"
 )
 
@@ -11,7 +11,7 @@ var CLI struct {
 	Quiet   bool `short:"q" help:"Suppress output. Print results only."`
 	Verbose bool `short:"v" help:"Show verbose output."`
 
-	Timeout time.Duration `help:"Timeout for HTTP requests." default:"5s"`
+	Timeout time.Duration `help:"Timeout for HTTP requests." default:"10s"`
 
 	Targets string `arg:"" optional:"" help:"Target email or file with emails."`
 
@@ -44,11 +44,11 @@ func Run() {
 
 	r, err := runner.NewRunner(options)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	err = r.RunEnumeration()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }
