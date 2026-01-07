@@ -1,0 +1,160 @@
+package sources
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type LeakCheck struct {
+	apiKeys []string
+}
+
+// Run function returns all subdomains found with the service
+func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
+	results := make(chan Result)
+
+	go func() {
+		defer func() {
+			close(results)
+		}()
+
+		randomApiKey := PickRandom(s.apiKeys, s.Name())
+		// skip target if no keys are provided
+		if randomApiKey == "" {
+			return
+		}
+
+		var response map[string]interface{}
+
+		// prepare request with custom headers
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://leakcheck.io/api/v2/query/%s", email), nil)
+		if err != nil {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  err,
+			}
+			return
+		}
+		req.Header.Add("X-API-Key", randomApiKey)
+		req.Header.Add("Accept", "application/json")
+
+		// perform the request
+		resp, err := session.Client.Do(req)
+		if err != nil {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  err,
+			}
+			return
+		}
+		defer session.DiscardHTTPResponse(resp)
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  err,
+			}
+			return
+		}
+
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  err,
+			}
+			return
+		}
+
+		success, ok := response["success"].(bool)
+		if !ok || !success {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  errors.New("failed to parse LeakCheck response"),
+			}
+			return
+		}
+		found, ok := response["found"].(float64)
+		if !ok {
+			results <- Result{
+				Source: s.Name(),
+				Value:  "",
+				Error:  errors.New("failed to parse LeakCheck response"),
+			}
+			return
+		}
+		foundInt := int(found)
+		if foundInt > 0 {
+			jsonResults, ok := response["result"].([]interface{})
+			if !ok {
+				results <- Result{
+					Source: s.Name(),
+					Value:  "",
+					Error:  errors.New("failed to parse LeakCheck response"),
+				}
+				return
+			}
+			for _, jsonResult := range jsonResults {
+				parseResult := jsonResult.(map[string]interface{})
+				var result []string
+				jsonFields, ok := parseResult["fields"].([]interface{})
+				if !ok {
+					// try to process next jsonResult
+					continue
+				}
+
+				for _, jsonField := range jsonFields {
+					field := jsonField.(string)
+					jsonResultField, ok := parseResult[field].(string)
+					if !ok {
+						// try to process next jsonField
+						continue
+					}
+					result = append(result, field+":"+jsonResultField)
+				}
+				if len(result) > 0 {
+					results <- Result{
+						Source: s.Name(),
+						Value:  strings.Join(result, ", "),
+						Error:  nil,
+					}
+				} else {
+					results <- Result{
+						Source: s.Name(),
+						Value:  "",
+						Error:  errors.New("failed to parse LeakCheck response"),
+					}
+				}
+			}
+		}
+	}()
+
+	return results
+}
+
+// Name returns the name of the source
+func (s *LeakCheck) Name() string {
+	return "leakcheck"
+}
+
+func (s *LeakCheck) IsDefault() bool {
+	return false
+}
+
+func (s *LeakCheck) NeedsKey() bool {
+	return true
+}
+
+func (s *LeakCheck) AddApiKeys(keys []string) {
+	s.apiKeys = keys
+}

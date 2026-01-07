@@ -1,11 +1,10 @@
 package sources
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
+	"strings"
 )
 
 type ProxyNovaResponse struct {
@@ -17,20 +16,8 @@ type ProxyNova struct {
 }
 
 // Run function returns all subdomains found with the service
-func (s *ProxyNova) Run(email string) <-chan Result {
+func (s *ProxyNova) Run(email string, session *Session) <-chan Result {
 	results := make(chan Result)
-
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // This is the key field to ignore certificate errors
-	}
-
-	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
-	}
-
-	client := &http.Client{
-		Transport: transport,
-	}
 
 	go func() {
 		var response ProxyNovaResponse
@@ -39,7 +26,7 @@ func (s *ProxyNova) Run(email string) <-chan Result {
 			close(results)
 		}()
 
-		resp, err := client.Get(fmt.Sprintf("https://api.proxynova.com/comb?query=%s&start=0&limit=100", email))
+		resp, err := session.Client.Get(fmt.Sprintf("https://api.proxynova.com/comb?query=%s&start=0&limit=100", email))
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
@@ -48,7 +35,7 @@ func (s *ProxyNova) Run(email string) <-chan Result {
 			}
 			return
 		}
-		defer resp.Body.Close()
+		defer session.DiscardHTTPResponse(resp)
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -71,11 +58,15 @@ func (s *ProxyNova) Run(email string) <-chan Result {
 		}
 
 		if response.Count > 0 {
+			// ProxyNova gives non-filtered results, so check if the result contains a username
+			username := strings.Split(email, "@")[0]
 			for _, line := range response.Lines {
-				results <- Result{
-					Source: s.Name(),
-					Value:  line,
-					Error:  nil,
+				if strings.Contains(line, username) {
+					results <- Result{
+						Source: s.Name(),
+						Value:  line,
+						Error:  nil,
+					}
 				}
 			}
 		}
@@ -99,8 +90,4 @@ func (s *ProxyNova) NeedsKey() bool {
 
 func (s *ProxyNova) AddApiKeys(_ []string) {
 	// no key needed
-}
-
-func (s *ProxyNova) GetRateLimit() int {
-	return 90
 }

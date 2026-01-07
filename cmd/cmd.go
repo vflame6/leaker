@@ -4,12 +4,19 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/vflame6/leaker/runner"
 	"log"
+	"time"
 )
 
 var CLI struct {
-	Quiet bool `short:"q" help:"Don't print leaker's beautiful banner."`
+	Quiet   bool `short:"q" help:"Suppress output. Print results only."`
+	Verbose bool `short:"v" help:"Show verbose output."`
 
-	Targets string `arg:"" required:"" help:"Target email or file with emails."`
+	Timeout time.Duration `help:"Timeout for HTTP requests." default:"5s"`
+
+	Targets string `arg:"" optional:"" help:"Target email or file with emails."`
+
+	ProviderConfig string `short:"p" help:"Path to a configuration file." default:"provider-config.yml"`
+	ListSources    bool   `help:"List all available sources."`
 }
 
 func Run() {
@@ -27,7 +34,12 @@ func Run() {
 	}
 
 	options := &runner.Options{
-		Targets: CLI.Targets,
+		Targets:        CLI.Targets,
+		Timeout:        CLI.Timeout,
+		Quiet:          CLI.Quiet,
+		Verbose:        CLI.Verbose,
+		ListSources:    CLI.ListSources,
+		ProviderConfig: CLI.ProviderConfig,
 	}
 
 	r, err := runner.NewRunner(options)
