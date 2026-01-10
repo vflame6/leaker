@@ -11,28 +11,28 @@ import (
 
 var CLI struct {
 	// INPUT
-	Targets string   `arg:"" optional:"" help:"target email or file with emails"`
-	Sources []string `short:"s" default:"all" help:"specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
+	Targets string   `arg:"" optional:"" help:"Target email or file with emails"`
+	Sources []string `short:"s" default:"all" help:"Specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
 
 	// OPTIMIZATION
-	Timeout     time.Duration `help:"seconds to wait before timing out (default 10s)" default:"10s"`
-	NoRateLimit bool          `short:"N" help:"disable rate limiting (DANGER)"`
+	Timeout     time.Duration `help:"Seconds to wait before timing out (default 10s)" default:"10s"`
+	NoRateLimit bool          `short:"N" help:"Disable rate limiting (DANGER)"`
 
 	// OUTPUT
-	Output    string `short:"o" help:"file to write output to"`
-	Overwrite bool   `help:"force overwrite of existing file"`
+	Output    string `short:"o" help:"File to write output to"`
+	Overwrite bool   `help:"Force overwrite of existing output file"`
 
 	// CONFIGURATION
-	ProviderConfig string `short:"p" help:"provider config file" default:"provider-config.yml"`
-	Proxy          string `help:"http proxy to use with leaker"`
-	UserAgent      string `short:"A" help:"custom user agent"`
+	ProviderConfig string `short:"p" help:"Provider config file" default:"provider-config.yml"`
+	Proxy          string `help:"HTTP proxy to use with leaker"`
+	UserAgent      string `short:"A" help:"Custom user agent"`
 
 	// DEBUG
-	Version     bool `help:"print version of leaker"`
-	Quiet       bool `short:"q" help:"suppress output, print results only"`
-	Verbose     bool `short:"v" help:"show sources in results output"`
-	Debug       bool `short:"D" help:"enable debug mode"`
-	ListSources bool `help:"list all available sources"`
+	Version     bool `help:"Print version of leaker"`
+	Quiet       bool `short:"q" help:"Suppress output, print results only"`
+	Verbose     bool `short:"v" help:"Show sources in results output"`
+	Debug       bool `short:"D" help:"Enable debug mode"`
+	ListSources bool `help:"List all available sources"`
 }
 
 func Run() {

@@ -35,23 +35,23 @@ Usage: leaker [<targets>] [flags]
   leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
 
 Arguments:
-  [<targets>]    target email or file with emails
+  [<targets>]    Target email or file with emails
 
 Flags:
   -h, --help                                     Show context-sensitive help.
-  -s, --sources=all,...                          specific sources to use for enumeration (default all). Use --list-sources to display all available sources.
-  --timeout=10s                              seconds to wait before timing out (default 10s)
-  -N, --no-rate-limit                            disable rate limiting (DANGER)
-  -o, --output=STRING                            file to write output to
-  --overwrite                                force overwrite of existing file
-  -p, --provider-config="provider-config.yml"    provider config file
-  --proxy=STRING                             http proxy to use with leaker
-  -A, --user-agent=STRING                        custom user agent
-  --version                                  print version of leaker
-  -q, --quiet                                    suppress output, print results only
-  -v, --verbose                                  show sources in results output
-  -D, --debug                                    enable debug mode
-  --list-sources                             list all available sources
+  -s, --sources=all,...                          Specific sources to use for enumeration (default all). Use --list-sources to display all available sources.
+  --timeout=10s                              Seconds to wait before timing out (default 10s)
+  -N, --no-rate-limit                            Disable rate limiting (DANGER)
+  -o, --output=STRING                            File to write output to
+  --overwrite                                Force overwrite of existing output file
+  -p, --provider-config="provider-config.yml"    Provider config file
+  --proxy=STRING                             HTTP proxy to use with leaker
+  -A, --user-agent=STRING                        Custom user agent
+  --version                                  Print version of leaker
+  -q, --quiet                                    Suppress output, print results only
+  -v, --verbose                                  Show sources in results output
+  -D, --debug                                    Enable debug mode
+  --list-sources                             List all available sources
 ```
 
 ## Installation
