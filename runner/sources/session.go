@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// NewSession creates a new session object for a domain
+// NewSession creates a new session object for an email
 func NewSession(timeout time.Duration) (*Session, error) {
 	Transport := &http.Transport{
 		MaxIdleConns:        100,

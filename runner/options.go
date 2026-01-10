@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,13 +17,19 @@ var (
 	defaultProviderConfigLocation = utils.GetEnvOrDefault("LEAKER_PROVIDER_CONFIG", filepath.Join(configDir, "provider-config.yaml"))
 )
 
+// Options struct is used to store leaker options. Sort alphabetically
 type Options struct {
+	Debug          bool
+	ListSources    bool
+	Output         io.Writer
+	OutputFile     string
+	Overwrite      bool
+	ProviderConfig string // ProviderConfig contains the location of the provider config file
 	Quiet          bool
-	Verbose        bool
+	Sources        []string
 	Targets        string
 	Timeout        time.Duration
-	ProviderConfig string // ProviderConfig contains the location of the provider config file
-	ListSources    bool
+	Verbose        bool
 }
 
 func listSources(options *Options) {
@@ -50,7 +57,7 @@ func (options *Options) loadProvidersFrom(location string) {
 // ConfigureOutput configures the output on the screen
 func (options *Options) ConfigureOutput() {
 	// If the user desires verbose output, show verbose output
-	if options.Verbose {
+	if options.Debug {
 		logger.DefaultLogger.SetMaxLevel(logger.LevelVerbose)
 	}
 	if options.Quiet {

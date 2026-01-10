@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vflame6/leaker/utils"
 	"io"
 	"net/http"
 	"strings"
@@ -22,7 +23,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 			close(results)
 		}()
 
-		randomApiKey := PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
 		// skip target if no keys are provided
 		if randomApiKey == "" {
 			return

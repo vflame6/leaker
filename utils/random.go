@@ -1,4 +1,4 @@
-package sources
+package utils
 
 import (
 	"github.com/vflame6/leaker/logger"

@@ -1,22 +1,35 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/alecthomas/kong"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner"
+	"os"
 	"time"
 )
 
 var CLI struct {
-	Quiet   bool `short:"q" help:"Suppress output. Print results only."`
-	Verbose bool `short:"v" help:"Show verbose output."`
+	// INPUT
+	Targets string   `arg:"" optional:"" help:"target email or file with emails"`
+	Sources []string `short:"s" default:"all" help:"specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
 
-	Timeout time.Duration `help:"Timeout for HTTP requests." default:"10s"`
+	// OPTIMIZATION
+	Timeout time.Duration `help:"seconds to wait before timing out (default 10s)" default:"10s"`
 
-	Targets string `arg:"" optional:"" help:"Target email or file with emails."`
+	// OUTPUT
+	Output    string `short:"o" help:"file to write output to"`
+	Overwrite bool   `help:"force overwrite of existing file"`
 
-	ProviderConfig string `short:"p" help:"Path to a configuration file." default:"provider-config.yml"`
-	ListSources    bool   `help:"List all available sources."`
+	// CONFIGURATION
+	ProviderConfig string `short:"p" help:"provider config file" default:"provider-config.yml"`
+
+	// DEBUG
+	Version     bool `help:"print version of leaker"`
+	Quiet       bool `short:"q" help:"suppress output, print results only"`
+	Verbose     bool `short:"v" help:"show sources in results output"`
+	Debug       bool `short:"D" help:"enable debug mode"`
+	ListSources bool `help:"list all available sources"`
 }
 
 func Run() {
@@ -29,17 +42,26 @@ func Run() {
 			Summary: true,
 		}))
 
+	if CLI.Version {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
+
 	if !CLI.Quiet {
 		PrintBanner()
 	}
 
 	options := &runner.Options{
+		Debug:          CLI.Debug,
+		ListSources:    CLI.ListSources,
+		OutputFile:     CLI.Output,
+		Overwrite:      CLI.Overwrite,
+		ProviderConfig: CLI.ProviderConfig,
+		Quiet:          CLI.Quiet,
+		Sources:        CLI.Sources,
 		Targets:        CLI.Targets,
 		Timeout:        CLI.Timeout,
-		Quiet:          CLI.Quiet,
 		Verbose:        CLI.Verbose,
-		ListSources:    CLI.ListSources,
-		ProviderConfig: CLI.ProviderConfig,
 	}
 
 	r, err := runner.NewRunner(options)

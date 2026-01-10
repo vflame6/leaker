@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
+	"io"
 	"sync"
 	"time"
 )
 
-func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error {
+func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration, writers []io.Writer) error {
+	var err error
+
 	logger.Infof("enumerating email %s", email)
 	results := make(chan sources.Result)
 
@@ -21,7 +24,12 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error
 				logger.Errorf("error enumerating email %s: %s", email, result.Error)
 				continue
 			}
-			WritePlainResult(r.options.Verbose, result.Source, result.Value)
+			for _, writer := range writers {
+				err = WritePlainResult(writer, r.options.Verbose, result.Source, result.Value)
+				if err != nil {
+					logger.Errorf("could not write results for %s: %s", email, err)
+				}
+			}
 		}
 		wg.Done()
 	}()
@@ -42,7 +50,7 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error
 
 		// Run each source in parallel on the target email
 		wg := &sync.WaitGroup{}
-		for _, s := range AllSources {
+		for _, s := range ScanSources {
 			wg.Add(1)
 			go func(s sources.Source) {
 				defer wg.Done()
@@ -55,5 +63,6 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration) error
 	}()
 	wg.Wait()
 
+	logger.Debugf("finished enumeration of email %s", email)
 	return nil
 }

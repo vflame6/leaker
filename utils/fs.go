@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -54,4 +55,68 @@ func FileExists(filename string) bool {
 		return false
 	}
 	return !info.IsDir()
+}
+
+func CreateFile(filename string, appendToFile bool) (*os.File, error) {
+	if filename == "" {
+		return nil, errors.New("empty filename")
+	}
+
+	// create nested directories if they not exist
+	dir := filepath.Dir(filename)
+	if dir != "" {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			err := os.MkdirAll(dir, os.ModePerm)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var file *os.File
+	var err error
+	if appendToFile {
+		file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	} else {
+		file, err = os.Create(filename)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
+func CreateFileWithSafe(filename string, appendToFile bool) (*os.File, error) {
+	if filename == "" {
+		return nil, errors.New("empty filename")
+	}
+
+	if FileExists(filename) {
+		return nil, errors.New(fmt.Sprintf("file already exists: %s", filename))
+	}
+
+	// create nested directories if they not exist
+	dir := filepath.Dir(filename)
+	if dir != "" {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			err := os.MkdirAll(dir, os.ModePerm)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var file *os.File
+	var err error
+	if appendToFile {
+		file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	} else {
+		file, err = os.Create(filename)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
 }

@@ -35,15 +35,21 @@ Usage: leaker [<targets>] [flags]
   leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
 
 Arguments:
-  [<targets>]    Target email or file with emails.
+  [<targets>]    target email or file with emails
 
 Flags:
   -h, --help                                     Show context-sensitive help.
-  -q, --quiet                                    Suppress output. Print results only.
-  -v, --verbose                                  Show verbose output.
-  --timeout=5s                               Timeout for HTTP requests.
-  -p, --provider-config="provider-config.yml"    Path to a configuration file.
-  --list-sources                             List all available sources.
+  -s, --sources=all,...                          specific sources to use for enumeration (default all). Use --list-sources to display all available sources.
+  --timeout=10s                              seconds to wait before timing out (default 10s)
+  -o, --output=STRING                            file to write output to
+  --overwrite                                force overwrite of existing file
+  -p, --provider-config="provider-config.yml"    provider config file
+  --version                                  print version of leaker
+  -q, --quiet                                    suppress output, print results only
+  -v, --verbose                                  show sources in results output
+  -D, --debug                                    enable debug mode
+  --list-sources                             list all available sources
+
 ```
 
 ## Installation

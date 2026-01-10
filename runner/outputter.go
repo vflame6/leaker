@@ -1,11 +1,28 @@
 package runner
 
-import "fmt"
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+)
 
-func WritePlainResult(verbose bool, source, value string) {
+func WritePlainResult(writer io.Writer, verbose bool, source, value string) error {
+	var result string
+	bufwriter := bufio.NewWriter(writer)
+
 	if verbose {
-		fmt.Printf("[%s] %s\n", source, value)
+		result = fmt.Sprintf("[%s] %s\n", source, value)
 	} else {
-		fmt.Printf("%s\n", value)
+		result = fmt.Sprintf("%s\n", value)
 	}
+
+	_, err := bufwriter.WriteString(result)
+	if err != nil {
+		if flushErr := bufwriter.Flush(); flushErr != nil {
+			return errors.Join(err, flushErr)
+		}
+		return err
+	}
+	return bufwriter.Flush()
 }
