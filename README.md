@@ -72,7 +72,7 @@ To Build:
 go build -o leaker main.go
 ```
 
-## Post-installation
+### Post-installation
 
 `leaker` can be used right after the installation, however many sources required API keys to work. View an example configuration file here: https://github.com/vflame6/leaker/blob/main/provider-config.yml
 
