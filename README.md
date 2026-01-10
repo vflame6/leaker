@@ -19,6 +19,8 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ## Features
 
+![leaker](static/leaker_demo.png)
+
 Available sources: `proxynova`, `leakcheck`
 
 ## Usage
@@ -69,6 +71,10 @@ To Build:
 ```
 go build -o leaker main.go
 ```
+
+## Post-installation
+
+`leaker` can be used right after the installation, however many sources required API keys to work. The tool will generate a provider configuration file on the first launch, you can specify API keys there.
 
 ## Contributing
 
