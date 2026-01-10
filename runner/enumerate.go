@@ -37,7 +37,7 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration, write
 	go func() {
 		defer close(results)
 
-		session, err := sources.NewSession(timeout, r.options.UserAgent)
+		session, err := sources.NewSession(timeout, r.options.UserAgent, r.options.Proxy)
 		if err != nil {
 			results <- sources.Result{
 				Source: "",

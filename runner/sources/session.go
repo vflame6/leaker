@@ -2,15 +2,18 @@ package sources
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
 // NewSession creates a new session object for an email
-func NewSession(timeout time.Duration, userAgent string) (*Session, error) {
+func NewSession(timeout time.Duration, userAgent, proxy string) (*Session, error) {
 	tr := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100,
@@ -20,6 +23,17 @@ func NewSession(timeout time.Duration, userAgent string) (*Session, error) {
 		Dial: (&net.Dialer{
 			Timeout: timeout,
 		}).Dial,
+	}
+
+	// Add proxy
+	// will raise an error if could not validate to ensure user's privacy
+	if proxy != "" {
+		proxyURL, _ := url.Parse(proxy)
+		if proxyURL == nil {
+			return nil, errors.New(fmt.Sprintf("Invalid proxy provided: %s", proxy))
+		} else {
+			tr.Proxy = http.ProxyURL(proxyURL)
+		}
 	}
 
 	customTransport := &CustomTransport{

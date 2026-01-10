@@ -81,7 +81,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 			results <- Result{
 				Source: s.Name(),
 				Value:  "",
-				Error:  errors.New("failed to parse LeakCheck response"),
+				Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
 			}
 			return
 		}
@@ -90,7 +90,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 			results <- Result{
 				Source: s.Name(),
 				Value:  "",
-				Error:  errors.New("failed to parse LeakCheck response"),
+				Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
 			}
 			return
 		}
@@ -101,7 +101,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 				results <- Result{
 					Source: s.Name(),
 					Value:  "",
-					Error:  errors.New("failed to parse LeakCheck response"),
+					Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
 				}
 				return
 			}
@@ -133,7 +133,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 					results <- Result{
 						Source: s.Name(),
 						Value:  "",
-						Error:  errors.New("failed to parse LeakCheck response"),
+						Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
 					}
 				}
 			}

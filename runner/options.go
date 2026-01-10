@@ -25,6 +25,7 @@ type Options struct {
 	OutputFile     string
 	Overwrite      bool
 	ProviderConfig string // ProviderConfig contains the location of the provider config file
+	Proxy          string
 	Quiet          bool
 	Sources        []string
 	Targets        string

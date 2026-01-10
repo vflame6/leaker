@@ -2,6 +2,7 @@ package sources
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -52,7 +53,7 @@ func (s *ProxyNova) Run(email string, session *Session) <-chan Result {
 			results <- Result{
 				Source: s.Name(),
 				Value:  "",
-				Error:  err,
+				Error:  errors.New(fmt.Sprintf("failed to parse ProxyNova response: %s", string(body))),
 			}
 			return
 		}

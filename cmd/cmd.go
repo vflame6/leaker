@@ -23,6 +23,7 @@ var CLI struct {
 
 	// CONFIGURATION
 	ProviderConfig string `short:"p" help:"provider config file" default:"provider-config.yml"`
+	Proxy          string `help:"http proxy to use with leaker"`
 	UserAgent      string `short:"A" help:"custom user agent"`
 
 	// DEBUG
@@ -58,6 +59,7 @@ func Run() {
 		OutputFile:     CLI.Output,
 		Overwrite:      CLI.Overwrite,
 		ProviderConfig: CLI.ProviderConfig,
+		Proxy:          CLI.Proxy,
 		Quiet:          CLI.Quiet,
 		Sources:        CLI.Sources,
 		Targets:        CLI.Targets,
