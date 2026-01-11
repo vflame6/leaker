@@ -32,7 +32,7 @@ var CLI struct {
 	Quiet       bool `short:"q" help:"Suppress output, print results only"`
 	Verbose     bool `short:"v" help:"Show sources in results output"`
 	Debug       bool `short:"D" help:"Enable debug mode"`
-	ListSources bool `help:"List all available sources"`
+	ListSources bool `short:"L" help:"List all available sources"`
 }
 
 func Run() {

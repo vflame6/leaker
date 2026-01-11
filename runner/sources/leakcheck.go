@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
 	"io"
 	"net/http"
@@ -45,6 +46,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 		req.Header.Add("Accept", "application/json")
 
 		// perform the request
+		logger.Debugf("Sending a request in LeakCheck source for %s", email)
 		resp, err := session.Client.Do(req)
 		if err != nil {
 			results <- Result{
@@ -65,6 +67,7 @@ func (s *LeakCheck) Run(email string, session *Session) <-chan Result {
 			}
 			return
 		}
+		logger.Debugf("Response from LeakCheck source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
 		err = json.Unmarshal(body, &response)
 		if err != nil {

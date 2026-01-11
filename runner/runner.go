@@ -112,7 +112,6 @@ func (r *Runner) RunEnumeration() error {
 		outputs = append(outputs, file)
 	}
 
-	logger.Debugf("starting email enumeration from %s", r.options.Targets)
 	return r.EnumerateMultipleEmails(t, outputs)
 }
 
@@ -136,6 +135,6 @@ func (r *Runner) EnumerateMultipleEmails(reader io.Reader, writers []io.Writer) 
 		return err
 	}
 
-	logger.Info("finished email enumeration")
+	logger.Info("Finished email enumeration")
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration, writers []io.Writer) error {
 	var err error
 
-	logger.Infof("enumerating email %s", email)
+	logger.Infof("Enumerating leaks for email %s", email)
 	results := make(chan sources.Result)
 
 	wg := &sync.WaitGroup{}
@@ -68,6 +68,6 @@ func (r *Runner) EnumerateSingleEmail(email string, timeout time.Duration, write
 	}()
 	wg.Wait()
 
-	logger.Debugf("finished enumeration of email %s", email)
+	logger.Debugf("Finished leaks enumeration for email %s", email)
 	return nil
 }

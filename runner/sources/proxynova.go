@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vflame6/leaker/logger"
 	"io"
 	"strings"
 )
@@ -27,6 +28,7 @@ func (s *ProxyNova) Run(email string, session *Session) <-chan Result {
 			close(results)
 		}()
 
+		logger.Debugf("Sending a request in ProxyNova source for %s", email)
 		resp, err := session.Client.Get(fmt.Sprintf("https://api.proxynova.com/comb?query=%s&start=0&limit=100", email))
 		if err != nil {
 			results <- Result{
@@ -47,6 +49,7 @@ func (s *ProxyNova) Run(email string, session *Session) <-chan Result {
 			}
 			return
 		}
+		logger.Debugf("Response from ProxyNova source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
 		err = json.Unmarshal(body, &response)
 		if err != nil {

@@ -74,7 +74,7 @@ go build -o leaker main.go
 
 ### Post-installation
 
-`leaker` can be used right after the installation, however many sources required API keys to work. View an example configuration file here: https://github.com/vflame6/leaker/blob/main/provider-config.yml
+`leaker` can be used right after the installation, however many sources required API keys to work. View an example configuration file here: https://github.com/vflame6/leaker/blob/main/static/provider-config.yml
 
 The tool will generate a provider configuration file on the first launch, so you can also specify API keys there.
 
