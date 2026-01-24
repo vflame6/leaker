@@ -51,6 +51,9 @@ func NewRunner(options *Options) (*Runner, error) {
 	// Default output is stdout
 	options.Output = os.Stdout
 
+	// Check if stdin pipe was given
+	options.Stdin = utils.HasStdin()
+
 	// configure User Agent
 	// if not specified, will set the default User-Agent string
 	if options.UserAgent == "" {
@@ -95,7 +98,7 @@ func (r *Runner) RunEnumeration() error {
 	var err error
 
 	// parse targets
-	t, err := utils.ParseTargets(r.options.Targets)
+	t, err := utils.ParseTargets(r.options.Targets, r.options.Stdin)
 	if err != nil {
 		return err
 	}

@@ -3,28 +3,33 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"github.com/mattn/go-isatty"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func ParseTargets(targets string) (io.Reader, error) {
-	if targets == "" {
-		return nil, errors.New("targets cannot be empty")
+func ParseTargets(targets string, stdin bool) (io.Reader, error) {
+	if targets != "" {
+		// check if targets is a file
+		if FileExists(targets) {
+			f, err := os.Open(targets)
+			if err != nil {
+				return nil, err
+			}
+			return f, nil
+		} else {
+			// if targets is not a file, process it like a line
+			return strings.NewReader(targets), nil
+		}
 	}
 
-	// check if targets is a file
-	if FileExists(targets) {
-		f, err := os.Open(targets)
-		if err != nil {
-			return nil, err
-		}
-		return f, nil
-	} else {
-		// if targets is not a file, process it like a line
-		return strings.NewReader(targets), nil
+	if stdin {
+		return os.Stdin, nil
 	}
+
+	return nil, errors.New("no targets provided")
 }
 
 // UserConfigDirOrDefault returns the user config directory or defaultConfigDir in case of error
@@ -89,4 +94,22 @@ func CreateFileWithSafe(filename string, appendToFile bool, overwrite bool) (*os
 	}
 
 	return file, nil
+}
+
+// HasStdin determines if the user has piped input
+func HasStdin() bool {
+	if IsWindows() && (isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())) {
+		return false
+	}
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+
+	mode := stat.Mode()
+
+	isPipedFromChrDev := (mode & os.ModeCharDevice) == 0
+	isPipedFromFIFO := (mode & os.ModeNamedPipe) != 0
+
+	return isPipedFromChrDev || isPipedFromFIFO
 }

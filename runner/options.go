@@ -30,6 +30,7 @@ type Options struct {
 	Proxy          string
 	Quiet          bool
 	Sources        []string
+	Stdin          bool
 	Targets        string
 	Timeout        time.Duration
 	UserAgent      string
