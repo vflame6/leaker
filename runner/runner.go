@@ -64,12 +64,28 @@ func NewRunner(options *Options) (*Runner, error) {
 		options: options,
 	}
 
-	r.configureSources()
-
-	return r, nil
+	err := r.configureSources()
+	return r, err
 }
 
-func (r *Runner) configureSources() {
+func (r *Runner) configureSources() error {
+	// lowercase all selected sources
+	for i := 0; i < len(r.options.Sources); i++ {
+		r.options.Sources[i] = strings.TrimSpace(strings.ToLower(r.options.Sources[i]))
+	}
+
+	// check for wrong sources
+	var allSourcesNames []string
+	allSourcesNames = append(allSourcesNames, "all")
+	for _, source := range AllSources {
+		allSourcesNames = append(allSourcesNames, source.Name())
+	}
+	for _, source := range r.options.Sources {
+		if !slices.Contains(allSourcesNames, source) {
+			return fmt.Errorf("invalid source %s specified in -s flag", source)
+		}
+	}
+
 	// check if all sources are specified
 	if slices.Contains(r.options.Sources, "all") {
 		logger.Debug("Configuring leaker to use all available sources")
@@ -77,21 +93,17 @@ func (r *Runner) configureSources() {
 		for _, source := range AllSources {
 			ScanSources = append(ScanSources, source)
 		}
-		return
-	}
-
-	// lowercase all selected sources
-	for i := 0; i < len(r.options.Sources); i++ {
-		r.options.Sources[i] = strings.ToLower(r.options.Sources[i])
+		return nil
 	}
 
 	// add selected sources
-	logger.Debug("Configuring leaker to use specified sources: %s", strings.Join(r.options.Sources, ", "))
+	logger.Debugf("Configuring leaker to use specified sources: %s", strings.Join(r.options.Sources, ", "))
 	for _, source := range AllSources {
 		if slices.Contains(r.options.Sources, strings.ToLower(source.Name())) {
 			ScanSources = append(ScanSources, source)
 		}
 	}
+	return nil
 }
 
 func (r *Runner) RunEnumeration() error {

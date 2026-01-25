@@ -11,6 +11,13 @@ import (
 )
 
 func ParseTargets(targets string, stdin bool) (io.Reader, error) {
+	// The tool will use STDIN if specified with CLI arguments
+	// STDIN input is preferred because of potential data loss from piped input
+	// We consider that CLI input (single email or file) cannot be lost, unlike piped output from other tools
+	if stdin {
+		return os.Stdin, nil
+	}
+
 	if targets != "" {
 		// check if targets is a file
 		if FileExists(targets) {
@@ -23,10 +30,6 @@ func ParseTargets(targets string, stdin bool) (io.Reader, error) {
 			// if targets is not a file, process it like a line
 			return strings.NewReader(targets), nil
 		}
-	}
-
-	if stdin {
-		return os.Stdin, nil
 	}
 
 	return nil, errors.New("no targets provided")
