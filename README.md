@@ -31,12 +31,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 Available sources: `proxynova`, `leakcheck`.
 
-Available search types: 
-
-- Search by `email`
-- Search by `username`
-- Search by `domain`
-- Search by `keyword`
+Available search types: `email`, `username`, `domain`, `keyword`.
 
 ## Usage
 
