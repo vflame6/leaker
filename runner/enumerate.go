@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-func (r *Runner) EnumerateSingleEmailOrDomain(probe string, scanType sources.ScanType, timeout time.Duration, writers []io.Writer) error {
+func (r *Runner) EnumerateSingleProbe(probe string, scanType sources.ScanType, timeout time.Duration, writers []io.Writer) error {
 	var err error
 
-	logger.Infof("Enumerating leaks for probe: %s", probe)
+	logger.Infof("Enumerating leaks for: %s", probe)
 	results := make(chan sources.Result)
 
 	wg := &sync.WaitGroup{}
@@ -23,7 +23,7 @@ func (r *Runner) EnumerateSingleEmailOrDomain(probe string, scanType sources.Sca
 		for result := range results {
 			// check if error
 			if result.Error != nil {
-				logger.Errorf("error enumerating probe %s: %s", probe, result.Error)
+				logger.Errorf("error on enumerating line %s: %s", probe, result.Error)
 				continue
 			}
 			// check if filtered
@@ -75,6 +75,6 @@ func (r *Runner) EnumerateSingleEmailOrDomain(probe string, scanType sources.Sca
 	}()
 	wg.Wait()
 
-	logger.Debugf("Finished leaks enumeration for probe %s", probe)
+	logger.Debugf("Finished leaks enumeration for: %s", probe)
 	return nil
 }

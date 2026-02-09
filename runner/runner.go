@@ -171,7 +171,7 @@ func (r *Runner) EnumerateMultipleEmails(reader io.Reader, writers []io.Writer) 
 		}
 
 		// run enumeration for a single line
-		err = r.EnumerateSingleEmailOrDomain(line, scanType, r.options.Timeout, writers)
+		err = r.EnumerateSingleProbe(line, scanType, r.options.Timeout, writers)
 	}
 	if err != nil {
 		return err
