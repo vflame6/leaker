@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/vflame6/leaker/logger"
+	"github.com/vflame6/leaker/runner/sources"
 	"github.com/vflame6/leaker/utils"
 	"io"
 	"os"
@@ -33,6 +34,7 @@ type Options struct {
 	Stdin          bool
 	Targets        string
 	Timeout        time.Duration
+	Type           sources.ScanType
 	UserAgent      string
 	Verbose        bool
 	Version        string

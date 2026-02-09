@@ -16,7 +16,7 @@ type LeakCheck struct {
 }
 
 // Run function returns all subdomains found with the service
-func (s *LeakCheck) Run(email string, scanType ScanType, session *Session) <-chan Result {
+func (s *LeakCheck) Run(target string, scanType ScanType, session *Session) <-chan Result {
 	results := make(chan Result)
 
 	go func() {
@@ -33,11 +33,15 @@ func (s *LeakCheck) Run(email string, scanType ScanType, session *Session) <-cha
 		var url string
 		var response map[string]interface{}
 
-		if scanType == 0 {
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s", email)
-		}
-		if scanType == 1 {
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=domain", email)
+		switch scanType {
+		case TypeEmail:
+			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=email", target)
+		case TypeUsername:
+			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=username", target)
+		case TypeDomain:
+			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=domain", target)
+		case TypeKeyword:
+			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=keyword", target)
 		}
 
 		// prepare request with custom headers
@@ -54,7 +58,7 @@ func (s *LeakCheck) Run(email string, scanType ScanType, session *Session) <-cha
 		req.Header.Add("Accept", "application/json")
 
 		// perform the request
-		logger.Debugf("Sending a request in LeakCheck source for %s", email)
+		logger.Debugf("Sending a request in LeakCheck source for %s", target)
 		resp, err := session.Client.Do(req)
 		if err != nil {
 			results <- Result{

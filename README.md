@@ -11,6 +11,13 @@
 <a href="https://t.me/vflame6"><img src="https://img.shields.io/badge/Follow-@vflame6-33a3e1?style=flat&logo=telegram"></a>
 </p>
 
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#installation">Install</a> •
+  <a href="#post-installation-instructions">API Setup</a>
+</p>
+
 Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ---
@@ -26,8 +33,10 @@ Available sources: `proxynova`, `leakcheck`.
 
 Available search types: 
 
-- Search by `email`, for example - `target@domain.com`
-- Search by `domain`, for example - `domain.com`
+- Search by `email`
+- Search by `username`
+- Search by `domain`
+- Search by `keyword`
 
 ## Usage
 
@@ -38,12 +47,9 @@ leaker -h
 Here is a help menu for the tool:
 
 ```yaml
-Usage: leaker [<targets>] [flags]
+Usage: leaker <command> [flags]
 
   leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
-
-Arguments:
-  [<targets>]    Target email/domain or file with emails/domains, one per line
 
 Flags:
   -h, --help                                     Show context-sensitive help.
@@ -61,6 +67,14 @@ Flags:
   -v, --verbose                                  Show sources in results output
   -D, --debug                                    Enable debug mode
   -L, --list-sources                             List all available sources
+
+Commands:
+  email       Search by email address.
+  username    Search by username.
+  domain      Search by domain name.
+  keyword     Search by keyword.
+
+  Run "leaker <command> --help" for more information on a command.
 ```
 
 ## Installation
@@ -85,7 +99,7 @@ Build with Docker:
 docker build -t leaker . 
 ```
 
-### Post-installation
+### Post Installation Instructions
 
 `leaker` can be used right after the installation, however many sources required API keys to work. View an example configuration file here: https://github.com/vflame6/leaker/blob/main/static/provider-config.yml
 

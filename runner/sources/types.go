@@ -42,6 +42,8 @@ type ScanType int
 
 // Types of available scans performed by the source
 const (
-	Email ScanType = iota
-	Domain
+	TypeEmail ScanType = iota
+	TypeUsername
+	TypeDomain
+	TypeKeyword
 )

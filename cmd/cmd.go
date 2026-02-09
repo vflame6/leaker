@@ -5,13 +5,27 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner"
+	"github.com/vflame6/leaker/runner/sources"
 	"os"
 	"time"
 )
 
 var CLI struct {
+	// COMMAND
+	Email struct {
+		Targets string `arg:"" optional:"" help:"Target email or file with emails, one per line"`
+	} `cmd:"" help:"Search by email address."`
+	Username struct {
+		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
+	} `cmd:"" help:"Search by username."`
+	Domain struct {
+		Targets string `arg:"" optional:"" help:"Target domain or file with domains, one per line"`
+	} `cmd:"" help:"Search by domain name."`
+	Keyword struct {
+		Targets string `arg:"" optional:"" help:"Target keyword or file with keywords, one per line"`
+	} `cmd:"" help:"Search by keyword."`
+
 	// INPUT
-	Targets string   `arg:"" optional:"" help:"Target email/domain or file with emails/domains, one per line"`
 	Sources []string `short:"s" default:"all" help:"Specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
 
 	// OPTIMIZATION
@@ -37,7 +51,7 @@ var CLI struct {
 }
 
 func Run() {
-	_ = kong.Parse(&CLI,
+	ctx := kong.Parse(&CLI,
 		kong.Name("leaker"),
 		kong.Description("leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources."),
 		kong.UsageOnError(),
@@ -55,6 +69,27 @@ func Run() {
 		PrintBanner()
 	}
 
+	// select command
+	var scanType sources.ScanType
+	var targets string
+
+	switch ctx.Command() {
+	case "email", "email <targets>":
+		scanType = sources.TypeEmail
+		targets = CLI.Email.Targets
+	case "username", "username <targets>":
+		scanType = sources.TypeUsername
+		targets = CLI.Username.Targets
+	case "domain", "domain <targets>":
+		scanType = sources.TypeDomain
+		targets = CLI.Domain.Targets
+	case "keyword", "keyword <targets>":
+		scanType = sources.TypeKeyword
+		targets = CLI.Keyword.Targets
+	default:
+		logger.Fatalf("Unknown command: %s", ctx.Command())
+	}
+
 	options := &runner.Options{
 		Debug:          CLI.Debug,
 		ListSources:    CLI.ListSources,
@@ -66,8 +101,9 @@ func Run() {
 		Proxy:          CLI.Proxy,
 		Quiet:          CLI.Quiet,
 		Sources:        CLI.Sources,
-		Targets:        CLI.Targets,
+		Targets:        targets,
 		Timeout:        CLI.Timeout,
+		Type:           scanType,
 		UserAgent:      CLI.UserAgent,
 		Verbose:        CLI.Verbose,
 		Version:        VERSION,

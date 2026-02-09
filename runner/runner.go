@@ -134,14 +134,14 @@ func (r *Runner) RunEnumeration() error {
 		outputs = append(outputs, file)
 	}
 
-	return r.EnumerateMultipleEmails(t, outputs)
+	return r.EnumerateMultipleTargets(t, outputs)
 }
 
-func (r *Runner) EnumerateMultipleEmails(reader io.Reader, writers []io.Writer) error {
+func (r *Runner) EnumerateMultipleTargets(reader io.Reader, writers []io.Writer) error {
 	var err error
 
 	if !r.options.NoFilter {
-		logger.Debugf("Results filtering is enabled, leaker will filter results by matching every result to inputted email.")
+		logger.Debugf("Results filtering is enabled, leaker will filter results by matching every result to inputted target.")
 	} else {
 		logger.Debugf("Results filtering is disabled, leaker will not filter any result.")
 	}
@@ -151,32 +151,25 @@ func (r *Runner) EnumerateMultipleEmails(reader io.Reader, writers []io.Writer) 
 	domainRegex := regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$`)
 
 	for scanner.Scan() {
-		var scanType sources.ScanType
-
 		line := strings.ToLower(strings.TrimSpace(scanner.Text()))
 
 		// check if valid email or domain
 		isEmail := emailRegex.MatchString(line)
 		isDomain := domainRegex.MatchString(line)
 
-		if line == "" || (!isEmail && !isDomain) {
-			logger.Infof("Can't parse input as line, skipping: %s", line)
+		if line == "" ||
+			(r.options.Type == sources.TypeEmail && !isEmail) ||
+			(r.options.Type == sources.TypeDomain && !isDomain) {
+			logger.Infof("Can't parse input as target, skipping: %s", line)
 			continue
 		}
 
-		if isEmail {
-			scanType = 0
-		} else {
-			scanType = 1
-		}
-
 		// run enumeration for a single line
-		err = r.EnumerateSingleProbe(line, scanType, r.options.Timeout, writers)
+		err = r.EnumerateSingleTarget(line, r.options.Type, r.options.Timeout, writers)
 	}
 	if err != nil {
 		return err
 	}
 
-	logger.Info("Finished email enumeration")
 	return nil
 }

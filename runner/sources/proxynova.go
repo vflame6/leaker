@@ -18,7 +18,8 @@ type ProxyNova struct {
 
 // Run function returns all subdomains found with the service
 func (s *ProxyNova) Run(email string, scanType ScanType, session *Session) <-chan Result {
-	// ignore scanType because ProxyNova API works for any input
+	// ignore scanType because ProxyNova API works with any input
+	// that's why result filtering is enabled by default
 
 	results := make(chan Result)
 
