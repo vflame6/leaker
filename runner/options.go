@@ -40,6 +40,11 @@ type Options struct {
 	Version        string
 }
 
+// ListSources prints all available sources to stdout.
+func ListSources() {
+	listSources(&Options{ProviderConfig: defaultProviderConfigLocation})
+}
+
 func listSources(options *Options) {
 	logger.Infof("Current list of available sources. [%d]", len(AllSources))
 	logger.Infof("Sources marked with an * require key(s) or token(s) to work.")

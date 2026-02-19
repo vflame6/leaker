@@ -23,13 +23,6 @@ type Runner struct {
 func NewRunner(options *Options) (*Runner, error) {
 	options.ConfigureOutput()
 
-	// --list-sources flag
-	if options.ListSources {
-		logger.Debug("Listing all available sources")
-		listSources(options)
-		os.Exit(0)
-	}
-
 	if exists := utils.FileExists(defaultProviderConfigLocation); !exists {
 		logger.Debugf("No default provider config file found: %s", defaultProviderConfigLocation)
 		logger.Debugf("Creating new default provider config at %s", defaultProviderConfigLocation)

@@ -51,6 +51,23 @@ var CLI struct {
 }
 
 func Run() {
+	// Handle flags that don't require a command before kong.Parse,
+	// since Kong enforces subcommand presence and would error out.
+	if hasFlag(os.Args[1:], "--version") {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
+
+	if !hasFlag(os.Args[1:], "-q", "--quiet") {
+		PrintBanner()
+	}
+
+	// --list-sources
+	if hasFlag(os.Args[1:], "-L", "--list-sources") {
+		runner.ListSources()
+		os.Exit(0)
+	}
+
 	ctx := kong.Parse(&CLI,
 		kong.Name("leaker"),
 		kong.Description("leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources."),
@@ -59,15 +76,6 @@ func Run() {
 			Compact: true,
 			Summary: true,
 		}))
-
-	if CLI.Version {
-		fmt.Println(VERSION)
-		os.Exit(0)
-	}
-
-	if !CLI.Quiet {
-		PrintBanner()
-	}
 
 	// select command
 	var scanType sources.ScanType
@@ -118,4 +126,16 @@ func Run() {
 	if err != nil {
 		logger.Fatal(err)
 	}
+}
+
+// hasFlag checks if any of the given flags are present in args.
+func hasFlag(args []string, flags ...string) bool {
+	for _, arg := range args {
+		for _, flag := range flags {
+			if arg == flag {
+				return true
+			}
+		}
+	}
+	return false
 }
