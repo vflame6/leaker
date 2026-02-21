@@ -12,18 +12,18 @@ import (
 
 var CLI struct {
 	// COMMAND
-	Email struct {
-		Targets string `arg:"" optional:"" help:"Target email or file with emails, one per line"`
-	} `cmd:"" help:"Search by email address."`
-	Username struct {
-		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
-	} `cmd:"" help:"Search by username."`
 	Domain struct {
 		Targets string `arg:"" optional:"" help:"Target domain or file with domains, one per line"`
 	} `cmd:"" help:"Search by domain name."`
+	Email struct {
+		Targets string `arg:"" optional:"" help:"Target email or file with emails, one per line"`
+	} `cmd:"" help:"Search by email address."`
 	Keyword struct {
 		Targets string `arg:"" optional:"" help:"Target keyword or file with keywords, one per line"`
 	} `cmd:"" help:"Search by keyword."`
+	Username struct {
+		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
+	} `cmd:"" help:"Search by username."`
 
 	// INPUT
 	Sources []string `short:"s" default:"all" help:"Specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
@@ -51,31 +51,46 @@ var CLI struct {
 }
 
 func Run() {
-	// Handle flags that don't require a command before kong.Parse,
-	// since Kong enforces subcommand presence and would error out.
-	if hasFlag(os.Args[1:], "--version") {
-		fmt.Println(VERSION)
-		os.Exit(0)
-	}
-
-	if !hasFlag(os.Args[1:], "-q", "--quiet") {
-		PrintBanner()
-	}
-
-	// --list-sources
-	if hasFlag(os.Args[1:], "-L", "--list-sources") {
-		runner.ListSources()
-		os.Exit(0)
-	}
-
-	ctx := kong.Parse(&CLI,
+	parser, err := kong.New(&CLI,
 		kong.Name("leaker"),
 		kong.Description("leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources."),
-		kong.UsageOnError(),
 		kong.ConfigureHelp(kong.HelpOptions{
 			Compact: true,
 			Summary: true,
 		}))
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, parseErr := parser.Parse(os.Args[1:])
+
+	// These flags don't require a command; handle them before enforcing one.
+	// show version
+	if CLI.Version {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
+	// list available sources
+	if CLI.ListSources {
+		runner.ListSources()
+		os.Exit(0)
+	}
+
+	// error if no command is specified
+	if parseErr != nil {
+		if len(os.Args) == 1 {
+			if pe, ok := parseErr.(*kong.ParseError); ok {
+				_ = pe.Context.PrintUsage(false)
+			}
+			os.Exit(0)
+		}
+		parser.FatalIfErrorf(parseErr)
+	}
+
+	// output banner
+	if !CLI.Quiet {
+		PrintBanner()
+	}
 
 	// select command
 	var scanType sources.ScanType
@@ -126,16 +141,4 @@ func Run() {
 	if err != nil {
 		logger.Fatal(err)
 	}
-}
-
-// hasFlag checks if any of the given flags are present in args.
-func hasFlag(args []string, flags ...string) bool {
-	for _, arg := range args {
-		for _, flag := range flags {
-			if arg == flag {
-				return true
-			}
-		}
-	}
-	return false
 }

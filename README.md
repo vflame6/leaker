@@ -64,10 +64,10 @@ Flags:
   -L, --list-sources                             List all available sources
 
 Commands:
-  email       Search by email address.
-  username    Search by username.
   domain      Search by domain name.
+  email       Search by email address.
   keyword     Search by keyword.
+  username    Search by username.
 
   Run "leaker <command> --help" for more information on a command.
 ```
