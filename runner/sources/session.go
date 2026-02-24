@@ -2,7 +2,6 @@ package sources
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"io"
@@ -32,7 +31,7 @@ func NewSession(timeout time.Duration, userAgent, proxy string, insecure bool) (
 	if proxy != "" {
 		proxyURL, _ := url.Parse(proxy)
 		if proxyURL == nil {
-			return nil, errors.New(fmt.Sprintf("Invalid proxy provided: %s", proxy))
+			return nil, fmt.Errorf("invalid proxy provided: %s", proxy)
 		} else {
 			tr.Proxy = http.ProxyURL(proxyURL)
 		}

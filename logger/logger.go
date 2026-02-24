@@ -85,7 +85,7 @@ func (l *Logger) log(level Level, format string, args ...any) {
 	}
 
 	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(output, "%s %s\n", level.String(), msg)
+	_, _ = fmt.Fprintf(output, "%s %s\n", level.String(), msg)
 }
 
 // Fatal logs a message at Fatal level and exits the program.

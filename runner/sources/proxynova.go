@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"io"
@@ -88,7 +87,7 @@ func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, ses
 
 	var response ProxyNovaResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to parse ProxyNova response: %s", string(body)))
+		return nil, fmt.Errorf("failed to parse ProxyNova response: %s", string(body))
 	}
 
 	return &response, nil

@@ -1,0 +1,23 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gocritic
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  exclude-rules:
+    - path: ".*_test\\.go"
+      linters:
+        - errcheck

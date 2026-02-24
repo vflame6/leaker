@@ -71,7 +71,7 @@ func CreateFileWithSafe(filename string, appendToFile bool, overwrite bool) (*os
 	}
 
 	if !overwrite && FileExists(filename) {
-		return nil, errors.New(fmt.Sprintf("file already exists: %s", filename))
+		return nil, fmt.Errorf("file already exists: %s", filename)
 	}
 
 	// create nested directories if they not exist

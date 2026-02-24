@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -97,7 +96,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			results <- Result{
 				Source: s.Name(),
 				Value:  "",
-				Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
+				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 			}
 			return
 		}
@@ -106,7 +105,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			results <- Result{
 				Source: s.Name(),
 				Value:  "",
-				Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
+				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 			}
 			return
 		}
@@ -117,7 +116,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 				results <- Result{
 					Source: s.Name(),
 					Value:  "",
-					Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
+					Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 				}
 				return
 			}
@@ -149,7 +148,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 					results <- Result{
 						Source: s.Name(),
 						Value:  "",
-						Error:  errors.New(fmt.Sprintf("failed to parse LeakCheck response: %s", string(body))),
+						Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 					}
 				}
 			}

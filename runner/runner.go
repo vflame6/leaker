@@ -16,8 +16,8 @@ import (
 )
 
 type Runner struct {
-	options      *Options
-	scanSources  []sources.Source
+	options     *Options
+	scanSources []sources.Source
 }
 
 // NewRunner creates a new runner struct instance by parsing

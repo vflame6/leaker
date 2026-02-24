@@ -92,7 +92,9 @@ func TestUnmarshalFrom_MissingFile(t *testing.T) {
 func TestUnmarshalFrom_MalformedYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.yaml")
-	os.WriteFile(path, []byte("not: valid: yaml: [unclosed"), 0644)
+	if err := os.WriteFile(path, []byte("not: valid: yaml: [unclosed"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := UnmarshalFrom(path)
 	if err == nil {

@@ -72,7 +72,9 @@ func TestCreateFileWithSafe_CreatesNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
 	if !FileExists(path) {
 		t.Error("expected file to exist after CreateFileWithSafe")
@@ -82,7 +84,9 @@ func TestCreateFileWithSafe_CreatesNewFile(t *testing.T) {
 func TestCreateFileWithSafe_ErrorIfExistsNoOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "existing.txt")
-	os.WriteFile(path, []byte("data"), 0644)
+	if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := CreateFileWithSafe(path, false, false)
 	if err == nil {
@@ -93,13 +97,17 @@ func TestCreateFileWithSafe_ErrorIfExistsNoOverwrite(t *testing.T) {
 func TestCreateFileWithSafe_OverwriteAllowed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "existing.txt")
-	os.WriteFile(path, []byte("old"), 0644)
+	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	f, err := CreateFileWithSafe(path, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 }
 
 func TestCreateFileWithSafe_CreatesParentDirs(t *testing.T) {
@@ -110,7 +118,9 @@ func TestCreateFileWithSafe_CreatesParentDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
 	if !FileExists(path) {
 		t.Error("expected nested file to exist")
