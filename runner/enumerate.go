@@ -33,11 +33,11 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 				continue
 			}
 			// check if filtered
-			if !r.options.NoFilter && !strings.Contains(result.Value, target) {
+			if !r.options.NoFilter && !strings.Contains(strings.ToLower(result.Value), target) {
 				continue
 			}
 			// deduplicate results across sources (unless disabled)
-			if !r.options.NoDedup {
+			if !r.options.ShowDuplicates {
 				if _, already := seen[result.Value]; already {
 					continue
 				}

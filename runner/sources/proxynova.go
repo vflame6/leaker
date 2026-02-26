@@ -26,6 +26,7 @@ func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, s
 		defer close(results)
 
 		// Fetch the first page to learn the total count
+		// scanType is ignored because ProxyNova does not support scan types
 		firstPage, err := s.fetchPage(ctx, target, 0, session)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
@@ -37,28 +38,33 @@ func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, s
 		}
 
 		// Paginate if there are more results than the first page returned
-		if firstPage.Count > len(firstPage.Lines) {
-			logger.Debugf("ProxyNova: %d total results for %s, paginating", firstPage.Count, target)
-			start := len(firstPage.Lines)
-			for start < firstPage.Count {
-				if ctx.Err() != nil {
-					return
-				}
-				page, err := s.fetchPage(ctx, target, start, session)
-				if err != nil {
-					results <- Result{Source: s.Name(), Error: err}
-					return
-				}
-				if len(page.Lines) == 0 {
-					// no more results despite count suggesting otherwise
-					break
-				}
-				for _, line := range page.Lines {
-					results <- Result{Source: s.Name(), Value: line}
-				}
-				start += len(page.Lines)
-			}
-		}
+		// COMMENTED OUT because proxynova does not allow to probe for other pages. Only first one is available for now.
+		// Current proxynova response:
+		//{
+		//	"error": "You are limited to 100 results"
+		//}
+		//if firstPage.Count > len(firstPage.Lines) {
+		//	logger.Debugf("ProxyNova: %d total results for %s, paginating", firstPage.Count, target)
+		//	start := len(firstPage.Lines)
+		//	for start < firstPage.Count {
+		//		if ctx.Err() != nil {
+		//			return
+		//		}
+		//		page, err := s.fetchPage(ctx, target, start, session)
+		//		if err != nil {
+		//			results <- Result{Source: s.Name(), Error: err}
+		//			return
+		//		}
+		//		if len(page.Lines) == 0 {
+		//			// no more results despite count suggesting otherwise
+		//			break
+		//		}
+		//		for _, line := range page.Lines {
+		//			results <- Result{Source: s.Name(), Value: line}
+		//		}
+		//		start += len(page.Lines)
+		//	}
+		//}
 	}()
 
 	return results

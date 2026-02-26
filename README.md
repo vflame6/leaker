@@ -44,24 +44,32 @@ Here is a help menu for the tool:
 ```yaml
 Usage: leaker <command> [flags]
 
-  leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
+  leaker is a leak discovery tool that returns valid credential leaks for emails,
+  using passive online sources.
 
 Flags:
-  -h, --help                                     Show context-sensitive help.
-  -s, --sources=all,...                          Specific sources to use for enumeration (default all). Use --list-sources to display all available sources.
-  --timeout=30s                              Seconds to wait before timing out (default 30s)
-  -N, --no-rate-limit                            Disable rate limiting (DANGER)
-  --no-filter                                Disable results filtering, include every result
-  -o, --output=STRING                            File to write output to
-  --overwrite                                Force overwrite of existing output file
-  -p, --provider-config="provider-config.yml"    Provider config file
-  --proxy=STRING                             HTTP proxy to use with leaker
-  -A, --user-agent=STRING                        Custom user agent
-  --version                                  Print version of leaker
-  -q, --quiet                                    Suppress output, print results only
-  -v, --verbose                                  Show sources in results output
-  -D, --debug                                    Enable debug mode
-  -L, --list-sources                             List all available sources
+  -h, --help                 Show context-sensitive help.
+  -s, --sources=all,...      Specific sources to use for enumeration (default
+  all). Use --list-sources to display all available
+  sources.
+  --timeout=30s          Seconds to wait before timing out (default 30s)
+  -N, --no-rate-limit        Disable rate limiting (DANGER)
+  -j, --json                 Output results as JSONL (one JSON object per line)
+  --show-duplicates      Disable deduplication of results across sources
+  --no-filter            Disable results filtering, include every result
+  -o, --output=STRING        File to write output to
+  --overwrite            Force overwrite of existing output file
+  -p, --provider-config="provider-config.yml"
+  Provider config file
+  --proxy=STRING         HTTP proxy to use with leaker
+  -A, --user-agent=STRING    Custom user agent
+  --insecure             Disable TLS certificate verification (use with
+  caution)
+  --version              Print version of leaker
+  -q, --quiet                Suppress output, print results only
+  -v, --verbose              Show sources in results output
+  -D, --debug                Enable debug mode
+  -L, --list-sources         List all available sources
 
 Commands:
   domain      Search by domain name.
@@ -74,7 +82,7 @@ Commands:
 
 ## Installation
 
-`leaker` requires **go1.25** to install successfully.
+`leaker` requires **go1.24** to install successfully.
 
 ```shell
 go install -v github.com/vflame6/leaker@latest

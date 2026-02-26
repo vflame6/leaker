@@ -24,7 +24,7 @@ type Options struct {
 	Insecure       bool // Insecure disables TLS certificate verification when true
 	JSON           bool // JSON outputs results as JSONL (one JSON object per line)
 	ListSources    bool
-	NoDedup        bool // NoDedup disables deduplication of results across sources
+	ShowDuplicates bool // ShowDuplicates disables deduplication of results across sources
 	NoFilter       bool
 	NoRateLimit    bool
 	Output         io.Writer
