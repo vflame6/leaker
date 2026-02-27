@@ -15,7 +15,13 @@ import (
 )
 
 type IntelX struct {
-	apiKeys []string
+	apiKeys []intelxKey
+}
+
+// intelxKey holds a parsed HOST:API_KEY pair.
+type intelxKey struct {
+	host   string // e.g. "2.intelx.io" or "free.intelx.io"
+	apiKey string // UUID API key
 }
 
 // intelxSearchRequest is the request body for POST /intelligent/search
@@ -50,13 +56,12 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
-		if randomApiKey == "" {
+		key := utils.PickRandom(s.apiKeys, s.Name())
+		if key.apiKey == "" {
 			return
 		}
-
-		// Determine API URL based on key format (free vs paid)
-		apiURL := "https://2.intelx.io/"
+		randomApiKey := key.apiKey
+		apiURL := fmt.Sprintf("https://%s/", key.host)
 
 		// Start the search
 		searchReq := intelxSearchRequest{
@@ -233,7 +238,17 @@ func (s *IntelX) NeedsKey() bool {
 }
 
 func (s *IntelX) AddApiKeys(keys []string) {
-	s.apiKeys = keys
+	for _, key := range keys {
+		idx := strings.Index(key, ":")
+		if idx < 0 {
+			logger.Warnf("IntelX: invalid key format %q — expected HOST:API_KEY (e.g. 2.intelx.io:your-uuid-key)", key)
+			continue
+		}
+		s.apiKeys = append(s.apiKeys, intelxKey{
+			host:   key[:idx],
+			apiKey: key[idx+1:],
+		})
+	}
 }
 
 func (s *IntelX) RateLimit() int {

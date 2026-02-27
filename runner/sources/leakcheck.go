@@ -42,6 +42,8 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=domain", target)
 		case TypeKeyword:
 			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=keyword", target)
+		case TypePhone:
+			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=phone", target)
 		}
 
 		// prepare request with custom headers

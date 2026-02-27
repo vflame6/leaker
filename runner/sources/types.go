@@ -49,4 +49,5 @@ const (
 	TypeUsername
 	TypeDomain
 	TypeKeyword
+	TypePhone
 )
