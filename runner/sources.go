@@ -11,4 +11,5 @@ var AllSources = [...]sources.Source{
 	&sources.BreachDirectory{},
 	&sources.LeakLookup{},
 	&sources.DeHashed{},
+	&sources.Snusbase{},
 }
