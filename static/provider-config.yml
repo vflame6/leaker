@@ -1,1 +1,11 @@
-leakcheck: [0123456789abcdef0123456789abcdef01234567]
+# API keys for leak sources
+# Each source accepts a list of API keys (load balancing across multiple keys)
+
+leakcheck: [YOUR_LEAKCHECK_API_KEY]
+osintleak: [YOUR_OSINTLEAK_API_KEY]
+intelx: [YOUR_INTELX_API_KEY]
+breachdirectory: [YOUR_RAPIDAPI_KEY]
+leaklookup: [YOUR_LEAKLOOKUP_API_KEY]
+dehashed: [YOUR_DEHASHED_API_KEY]
+snusbase: [YOUR_SNUSBASE_ACTIVATION_CODE]
+leaksight: [YOUR_LEAKSIGHT_TOKEN]

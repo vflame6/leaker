@@ -29,7 +29,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ![leaker](static/leaker_demo.png)
 
-Available sources: `proxynova`, `leakcheck`.
+Available sources: `proxynova`, `leakcheck`, `osintleak`, `intelx`, `breachdirectory`, `leaklookup`, `dehashed`, `snusbase`, `leaksight`.
 
 Available search types: `email`, `username`, `domain`, `keyword`.
 

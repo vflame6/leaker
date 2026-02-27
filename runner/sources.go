@@ -6,4 +6,11 @@ import "github.com/vflame6/leaker/runner/sources"
 var AllSources = [...]sources.Source{
 	&sources.LeakCheck{},
 	&sources.ProxyNova{},
+	&sources.OSINTLeak{},
+	&sources.IntelX{},
+	&sources.BreachDirectory{},
+	&sources.LeakLookup{},
+	&sources.DeHashed{},
+	&sources.Snusbase{},
+	&sources.LeakSight{},
 }
