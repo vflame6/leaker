@@ -41,9 +41,23 @@ func TestIntelXRunNoKey(t *testing.T) {
 
 func TestIntelXAddApiKeys(t *testing.T) {
 	s := &IntelX{}
-	s.AddApiKeys([]string{"key1", "key2"})
+	s.AddApiKeys([]string{"2.intelx.io:uuid-key-1", "free.intelx.io:uuid-key-2"})
 	if len(s.apiKeys) != 2 {
 		t.Errorf("expected 2 API keys, got %d", len(s.apiKeys))
+	}
+	if s.apiKeys[0].host != "2.intelx.io" || s.apiKeys[0].apiKey != "uuid-key-1" {
+		t.Errorf("unexpected key[0]: %+v", s.apiKeys[0])
+	}
+	if s.apiKeys[1].host != "free.intelx.io" || s.apiKeys[1].apiKey != "uuid-key-2" {
+		t.Errorf("unexpected key[1]: %+v", s.apiKeys[1])
+	}
+}
+
+func TestIntelXAddApiKeysInvalidFormat(t *testing.T) {
+	s := &IntelX{}
+	s.AddApiKeys([]string{"invalid-no-colon"})
+	if len(s.apiKeys) != 0 {
+		t.Errorf("expected 0 API keys for invalid format, got %d", len(s.apiKeys))
 	}
 }
 
