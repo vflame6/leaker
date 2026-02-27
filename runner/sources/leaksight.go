@@ -38,6 +38,8 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 			endpoint = "url" // searches by URL/domain
 		case TypeKeyword:
 			endpoint = "password"
+		case TypePhone:
+			endpoint = "number"
 		}
 
 		url := fmt.Sprintf("https://api.leaksight.com/osint/%s?token=%s&text=%s",

@@ -43,7 +43,7 @@ func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, s
 		//{
 		//	"error": "You are limited to 100 results"
 		//}
-		//if firstPage.Count > len(firstPage.Lines) {
+		// if firstPage.Count > len(firstPage.Lines) {
 		//	logger.Debugf("ProxyNova: %d total results for %s, paginating", firstPage.Count, target)
 		//	start := len(firstPage.Lines)
 		//	for start < firstPage.Count {

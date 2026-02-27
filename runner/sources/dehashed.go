@@ -25,9 +25,9 @@ type dehashedSearchRequest struct {
 }
 
 type dehashedSearchResponse struct {
-	Balance int              `json:"balance"`
-	Entries []dehashedEntry  `json:"entries"`
-	Total   int              `json:"total"`
+	Balance int             `json:"balance"`
+	Entries []dehashedEntry `json:"entries"`
+	Total   int             `json:"total"`
 }
 
 type dehashedEntry struct {
@@ -63,6 +63,8 @@ func (s *DeHashed) Run(ctx context.Context, target string, scanType ScanType, se
 			query = "email:*@" + target
 		case TypeKeyword:
 			query = target
+		case TypePhone:
+			query = "phone:" + target
 		}
 
 		searchReq := dehashedSearchRequest{

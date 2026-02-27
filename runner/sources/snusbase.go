@@ -24,9 +24,9 @@ type snusbaseSearchRequest struct {
 }
 
 type snusbaseSearchResponse struct {
-	Took    float64                              `json:"took"`
-	Size    int                                  `json:"size"`
-	Results map[string][]map[string]interface{}  `json:"results"`
+	Took    float64                             `json:"took"`
+	Size    int                                 `json:"size"`
+	Results map[string][]map[string]interface{} `json:"results"`
 }
 
 func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {

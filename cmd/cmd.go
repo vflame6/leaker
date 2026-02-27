@@ -24,6 +24,9 @@ var CLI struct {
 	Keyword struct {
 		Targets string `arg:"" optional:"" help:"Target keyword or file with keywords, one per line"`
 	} `cmd:"" help:"Search by keyword."`
+	Phone struct {
+		Targets string `arg:"" optional:"" help:"Target phone number or file with phone numbers, one per line (digits only, e.g. 79952341096)"`
+	} `cmd:"" help:"Search by phone number."`
 	Username struct {
 		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
 	} `cmd:"" help:"Search by username."`
@@ -115,6 +118,9 @@ func Run() {
 	case "keyword", "keyword <targets>":
 		scanType = sources.TypeKeyword
 		targets = CLI.Keyword.Targets
+	case "phone", "phone <targets>":
+		scanType = sources.TypePhone
+		targets = CLI.Phone.Targets
 	default:
 		logger.Fatalf("Unknown command: %s", ctx.Command())
 	}

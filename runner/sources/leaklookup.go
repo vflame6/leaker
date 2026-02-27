@@ -43,6 +43,8 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 			searchType = "domain"
 		case TypeKeyword:
 			searchType = "password"
+		case TypePhone:
+			searchType = "phone"
 		}
 
 		form := url.Values{}

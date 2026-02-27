@@ -38,6 +38,8 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 			searchType = "email"
 		case TypeKeyword:
 			searchType = "password"
+		case TypePhone:
+			searchType = "phone"
 		}
 
 		url := fmt.Sprintf(
@@ -136,4 +138,3 @@ func (s *OSINTLeak) AddApiKeys(keys []string) {
 func (s *OSINTLeak) RateLimit() int {
 	return 2
 }
-

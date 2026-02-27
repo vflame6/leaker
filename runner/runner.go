@@ -143,18 +143,21 @@ func (r *Runner) EnumerateMultipleTargets(ctx context.Context, reader io.Reader,
 	scanner := bufio.NewScanner(reader)
 	emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
 	domainRegex := regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$`)
+	phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
 
 	var errs []error
 	for scanner.Scan() {
 		line := strings.ToLower(strings.TrimSpace(scanner.Text()))
 
-		// check if valid email or domain
+		// check if valid email, domain, or phone
 		isEmail := emailRegex.MatchString(line)
 		isDomain := domainRegex.MatchString(line)
+		isPhone := phoneRegex.MatchString(line)
 
 		if line == "" ||
 			(r.options.Type == sources.TypeEmail && !isEmail) ||
-			(r.options.Type == sources.TypeDomain && !isDomain) {
+			(r.options.Type == sources.TypeDomain && !isDomain) ||
+			(r.options.Type == sources.TypePhone && !isPhone) {
 			logger.Infof("Can't parse input as target, skipping: %s", line)
 			continue
 		}
