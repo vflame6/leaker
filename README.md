@@ -41,7 +41,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | Source | API Key | Search Types | Pricing             |
 |--------|---------|-------------|---------------------|
 | [ProxyNova](https://www.proxynova.com/tools/comb) | No | all | Free                |
-| [LeakCheck](https://leakcheck.io/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
 | [OSINTLeak](https://osintleak.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
@@ -165,8 +165,6 @@ Intelligence X uses `HOST:API_KEY` format to support different tiers:
 intelx: [free.intelx.io:your-uuid]   # free tier
 intelx: [2.intelx.io:your-uuid]      # paid tier
 ```
-
-> If you wish to buy a LeakCheck subscription, you can support the project by using this invite link: https://leakcheck.io/?ref=486555
 
 ## Contributing
 
