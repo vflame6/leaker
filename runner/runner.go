@@ -149,6 +149,11 @@ func (r *Runner) EnumerateMultipleTargets(ctx context.Context, reader io.Reader,
 	for scanner.Scan() {
 		line := strings.ToLower(strings.TrimSpace(scanner.Text()))
 
+		// Normalize phone input: extract digits from formats like "+7 (995) 234-10-96"
+		if r.options.Type == sources.TypePhone {
+			line = utils.ExtractPhoneDigits(line)
+		}
+
 		// check if valid email, domain, or phone
 		isEmail := emailRegex.MatchString(line)
 		isDomain := domainRegex.MatchString(line)

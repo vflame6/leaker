@@ -1,12 +1,14 @@
 package sources
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -38,17 +40,24 @@ type intelxSearchResponse struct {
 }
 
 type intelxResultRecord struct {
+	StorageID   string `json:"storageid"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	MediaH      string `json:"mediah"`
 	Date        string `json:"date"`
 	Bucket      string `json:"bucket"`
+	AccessLevel int    `json:"accesslevel"`
+	Type        int    `json:"type"`
 }
 
 type intelxResultResponse struct {
 	Records []intelxResultRecord `json:"records"`
 	Status  int                  `json:"status"` // 0=results(continue), 1=no more, 2=not found, 3=keep trying
 }
+
+// maxFileReadSize is the maximum number of bytes to read from a single file.
+// This prevents downloading very large files.
+const maxFileReadSize = 10 * 1024 * 1024 // 10 MB
 
 func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
 	results := make(chan Result)
@@ -62,6 +71,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 		}
 		randomApiKey := key.apiKey
 		apiURL := fmt.Sprintf("https://%s/", key.host)
+		lowerTarget := strings.ToLower(target)
 
 		// Start the search
 		searchReq := intelxSearchRequest{
@@ -125,18 +135,20 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 		searchID := searchResp.ID
 		logger.Debugf("IntelX search started with ID %s", searchID)
 
+		// Collect all records first, then fetch file contents
+		var allRecords []intelxResultRecord
+
 		// Poll for results (up to 10 attempts with 2s delay)
 		for attempt := 0; attempt < 10; attempt++ {
 			select {
 			case <-ctx.Done():
-				// Terminate search on context cancel
 				s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
 				return
 			case <-time.After(2 * time.Second):
 			}
 
 			resultReq, err := http.NewRequestWithContext(ctx, "GET",
-				fmt.Sprintf("%sintelligent/search/result?id=%s&limit=100&previewlines=8", apiURL, searchID), nil)
+				fmt.Sprintf("%sintelligent/search/result?id=%s&limit=100", apiURL, searchID), nil)
 			if err != nil {
 				results <- Result{Source: s.Name(), Error: err}
 				return
@@ -163,20 +175,15 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 				return
 			}
 
-			// Emit records
-			for _, record := range resultData.Records {
-				value := s.formatRecord(record)
-				if value != "" {
-					results <- Result{Source: s.Name(), Value: value}
-				}
-			}
+			logger.Debugf("IntelX poll attempt %d: status=%d, records=%d", attempt, resultData.Status, len(resultData.Records))
+
+			allRecords = append(allRecords, resultData.Records...)
 
 			// Status: 0=continue, 1=done, 2=not found, 3=keep trying
 			if resultData.Status == 1 || resultData.Status == 2 {
 				break
 			}
 			if resultData.Status == 0 {
-				// More results may be available, continue polling
 				continue
 			}
 			// Status 3: no results yet, keep trying
@@ -184,9 +191,103 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 
 		// Terminate search to free resources
 		s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
+
+		logger.Debugf("IntelX found %d records, fetching file contents", len(allRecords))
+
+		// Sort records by access level (public first) so we prefer readable files
+		sort.Slice(allRecords, func(i, j int) bool {
+			return allRecords[i].AccessLevel < allRecords[j].AccessLevel
+		})
+
+		// Deduplicate records by StorageID (same file can appear with different part markers)
+		seen := make(map[string]struct{})
+		var uniqueRecords []intelxResultRecord
+		for _, record := range allRecords {
+			if _, ok := seen[record.StorageID]; ok {
+				continue
+			}
+			seen[record.StorageID] = struct{}{}
+			uniqueRecords = append(uniqueRecords, record)
+		}
+
+		// For each unique record, fetch file contents and extract matching lines.
+		// Stop fetching if we hit a rate limit (402) — the API budget is exhausted.
+		rateLimited := false
+		for _, record := range uniqueRecords {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if rateLimited {
+				break
+			}
+
+			lines, status := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
+			if status == http.StatusPaymentRequired {
+				rateLimited = true
+				logger.Debugf("IntelX file read rate limited (402), stopping further reads")
+				continue
+			}
+			for _, line := range lines {
+				results <- Result{Source: s.Name(), Value: line}
+			}
+		}
 	}()
 
 	return results
+}
+
+// fetchMatchingLines reads a file from IntelX and returns lines containing the target.
+// For redacted files (free tier), the content will be masked and won't match the target,
+// which is the correct behavior — downstream filtering handles this naturally.
+func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiURL, apiKey string, record intelxResultRecord, target string) ([]string, int) {
+	readURL := fmt.Sprintf("%sfile/read?type=%d&limit=0", apiURL, record.Type)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", readURL, nil)
+	if err != nil {
+		logger.Debugf("IntelX file read request error for %s: %v", record.Name, err)
+		return nil, 0
+	}
+	// Set query params via url.Values to ensure proper encoding
+	q := req.URL.Query()
+	q.Set("storageid", record.StorageID)
+	q.Set("bucket", record.Bucket)
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("x-key", apiKey)
+
+	resp, err := session.Client.Do(req)
+	if err != nil {
+		logger.Debugf("IntelX file read error for %s: %v", record.Name, err)
+		return nil, 0
+	}
+	defer session.DiscardHTTPResponse(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Debugf("IntelX file read returned status %d for %s", resp.StatusCode, record.Name)
+		return nil, resp.StatusCode
+	}
+
+	// Read the response body with a size limit
+	limitedReader := io.LimitReader(resp.Body, maxFileReadSize)
+	scanner := bufio.NewScanner(limitedReader)
+	// Increase scanner buffer for potentially long lines
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var matches []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(strings.ToLower(line), target) {
+			matches = append(matches, line)
+		}
+	}
+
+	if len(matches) > 0 {
+		logger.Debugf("IntelX file %s: found %d matching lines", record.Name, len(matches))
+	}
+
+	return matches, http.StatusOK
 }
 
 func (s *IntelX) terminateSearch(ctx context.Context, session *Session, apiURL, apiKey, searchID string) {
@@ -206,23 +307,6 @@ func (s *IntelX) terminateSearch(ctx context.Context, session *Session, apiURL, 
 	}
 	_ = ctx
 	session.DiscardHTTPResponse(resp)
-}
-
-func (s *IntelX) formatRecord(record intelxResultRecord) string {
-	var parts []string
-	if record.Name != "" {
-		parts = append(parts, "name:"+record.Name)
-	}
-	if record.MediaH != "" {
-		parts = append(parts, "type:"+record.MediaH)
-	}
-	if record.Bucket != "" {
-		parts = append(parts, "bucket:"+record.Bucket)
-	}
-	if record.Date != "" {
-		parts = append(parts, "date:"+record.Date)
-	}
-	return strings.Join(parts, ", ")
 }
 
 func (s *IntelX) Name() string {

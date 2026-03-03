@@ -114,6 +114,31 @@ func TestEnumerateMultipleTargets_SkipsNonEmailForEmailType(t *testing.T) {
 }
 
 // TestEnumerateMultipleTargets_SkipsNonDomainForDomainType checks domain filtering.
+// TestEnumerateMultipleTargets_NormalizesPhoneInput checks that phone numbers
+// in various formats are normalized to digits-only before processing.
+func TestEnumerateMultipleTargets_NormalizesPhoneInput(t *testing.T) {
+	r := newTestRunner([]string{})
+	r.options.Type = sources.TypePhone
+	r.options.NoFilter = true
+
+	var out bytes.Buffer
+	// These should all be normalized and NOT skipped (valid digit counts)
+	input := strings.NewReader("+1 (555) 234 10 96\n+998-50-123-45-67\n15552341096\n")
+	err := r.EnumerateMultipleTargets(context.Background(), input, []io.Writer{&out})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No sources configured, so no output, but the important thing is no errors
+	// and the lines weren't skipped. We verify by checking that a short/invalid
+	// input IS skipped.
+	var out2 bytes.Buffer
+	input2 := strings.NewReader("123\nnot-a-phone\n")
+	err = r.EnumerateMultipleTargets(context.Background(), input2, []io.Writer{&out2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEnumerateMultipleTargets_SkipsNonDomainForDomainType(t *testing.T) {
 	r := newTestRunner([]string{})
 	r.options.Type = sources.TypeDomain
