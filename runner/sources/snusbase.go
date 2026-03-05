@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -106,18 +105,33 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 
 		for dbName, records := range response.Results {
 			for _, record := range records {
-				var parts []string
-				parts = append(parts, "database:"+dbName)
-				for _, field := range []string{"email", "username", "password", "hash", "lastip", "name", "salt"} {
-					if val, ok := record[field].(string); ok && val != "" {
-						parts = append(parts, field+":"+val)
-					}
+				r := Result{
+					Source:   s.Name(),
+					Database: dbName,
 				}
-				if len(parts) > 1 { // more than just database name
-					results <- Result{
-						Source: s.Name(),
-						Value:  strings.Join(parts, ", "),
-					}
+				if val, ok := record["email"].(string); ok && val != "" {
+					r.Email = val
+				}
+				if val, ok := record["username"].(string); ok && val != "" {
+					r.Username = val
+				}
+				if val, ok := record["password"].(string); ok && val != "" {
+					r.Password = val
+				}
+				if val, ok := record["hash"].(string); ok && val != "" {
+					r.Hash = val
+				}
+				if val, ok := record["lastip"].(string); ok && val != "" {
+					r.IP = val
+				}
+				if val, ok := record["name"].(string); ok && val != "" {
+					r.Name = val
+				}
+				if val, ok := record["salt"].(string); ok && val != "" {
+					r.SetExtra("salt", val)
+				}
+				if r.HasData() {
+					results <- r
 				}
 			}
 		}
@@ -130,9 +144,6 @@ func (s *Snusbase) Name() string {
 	return "snusbase"
 }
 
-func (s *Snusbase) IsDefault() bool {
-	return false
-}
 
 func (s *Snusbase) NeedsKey() bool {
 	return true

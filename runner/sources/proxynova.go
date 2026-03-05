@@ -7,6 +7,7 @@ import (
 	"github.com/vflame6/leaker/logger"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type ProxyNovaResponse struct {
@@ -34,7 +35,17 @@ func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, s
 		}
 
 		for _, line := range firstPage.Lines {
-			results <- Result{Source: s.Name(), Value: line}
+			r := Result{Source: s.Name()}
+			// ProxyNova returns lines in "email:password" format
+			if idx := strings.Index(line, ":"); idx > 0 {
+				r.Email = line[:idx]
+				r.Password = line[idx+1:]
+			} else {
+				r.Email = line
+			}
+			if r.HasData() {
+				results <- r
+			}
 		}
 
 		// Paginate if there are more results than the first page returned
@@ -104,9 +115,6 @@ func (s *ProxyNova) Name() string {
 	return "proxynova"
 }
 
-func (s *ProxyNova) IsDefault() bool {
-	return true
-}
 
 func (s *ProxyNova) NeedsKey() bool {
 	return false

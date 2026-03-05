@@ -113,33 +113,45 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 			var records []map[string]interface{}
 			if err := json.Unmarshal(rawRecords, &records); err != nil {
 				// Public key: breach name only
-				results <- Result{
-					Source: s.Name(),
-					Value:  "breach:" + breachName,
-				}
+				results <- Result{Source: s.Name(), Database: breachName}
 				continue
 			}
 
 			if len(records) == 0 {
 				// Public key: empty array means breach found but no details
-				results <- Result{
-					Source: s.Name(),
-					Value:  "breach:" + breachName,
-				}
+				results <- Result{Source: s.Name(), Database: breachName}
 				continue
 			}
 
 			for _, record := range records {
-				var parts []string
-				parts = append(parts, "breach:"+breachName)
-				for _, field := range []string{"email_address", "email", "username", "password", "hash", "phone", "ip_address", "fullname"} {
-					if val, ok := record[field].(string); ok && val != "" {
-						parts = append(parts, field+":"+val)
-					}
+				r := Result{Source: s.Name(), Database: breachName}
+				// LeakLookup uses both "email_address" and "email"
+				if val, ok := record["email_address"].(string); ok && val != "" {
+					r.Email = val
 				}
-				results <- Result{
-					Source: s.Name(),
-					Value:  strings.Join(parts, ", "),
+				if val, ok := record["email"].(string); ok && val != "" {
+					r.Email = val
+				}
+				if val, ok := record["username"].(string); ok && val != "" {
+					r.Username = val
+				}
+				if val, ok := record["password"].(string); ok && val != "" {
+					r.Password = val
+				}
+				if val, ok := record["hash"].(string); ok && val != "" {
+					r.Hash = val
+				}
+				if val, ok := record["phone"].(string); ok && val != "" {
+					r.Phone = val
+				}
+				if val, ok := record["ip_address"].(string); ok && val != "" {
+					r.IP = val
+				}
+				if val, ok := record["fullname"].(string); ok && val != "" {
+					r.Name = val
+				}
+				if r.HasData() {
+					results <- r
 				}
 			}
 		}
@@ -152,9 +164,6 @@ func (s *LeakLookup) Name() string {
 	return "leaklookup"
 }
 
-func (s *LeakLookup) IsDefault() bool {
-	return false
-}
 
 func (s *LeakLookup) NeedsKey() bool {
 	return true

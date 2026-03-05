@@ -231,7 +231,21 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 				continue
 			}
 			for _, line := range lines {
-				results <- Result{Source: s.Name(), Value: line}
+				r := Result{Source: s.Name()}
+				// IntelX returns lines in "email:password" or "email;password" format
+				sep := ":"
+				if strings.Contains(line, ";") && !strings.Contains(line, ":") {
+					sep = ";"
+				}
+				if idx := strings.Index(line, sep); idx > 0 {
+					r.Email = line[:idx]
+					r.Password = line[idx+1:]
+				} else {
+					r.Email = line
+				}
+				if r.HasData() {
+					results <- r
+				}
 			}
 		}
 	}()
@@ -313,9 +327,6 @@ func (s *IntelX) Name() string {
 	return "intelx"
 }
 
-func (s *IntelX) IsDefault() bool {
-	return false
-}
 
 func (s *IntelX) NeedsKey() bool {
 	return true

@@ -3,19 +3,24 @@ package runner
 import (
 	"bytes"
 	"errors"
+	"github.com/vflame6/leaker/runner/sources"
 	"strings"
 	"testing"
 )
 
 func TestWritePlainResult_NotVerbose(t *testing.T) {
 	var buf bytes.Buffer
-	err := WritePlainResult(&buf, false, "leakcheck", "user@example.com:password123")
+	r := &sources.Result{Source: "leakcheck", Email: "user@example.com", Password: "password123"}
+	err := WritePlainResult(&buf, false, r)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
-	if got != "user@example.com:password123\n" {
-		t.Errorf("expected plain value line, got: %q", got)
+	if !strings.Contains(got, "email:user@example.com") {
+		t.Errorf("expected email field, got: %q", got)
+	}
+	if !strings.Contains(got, "password:password123") {
+		t.Errorf("expected password field, got: %q", got)
 	}
 	if strings.Contains(got, "leakcheck") {
 		t.Errorf("source should not appear in non-verbose output, got: %q", got)
@@ -24,13 +29,14 @@ func TestWritePlainResult_NotVerbose(t *testing.T) {
 
 func TestWritePlainResult_Verbose(t *testing.T) {
 	var buf bytes.Buffer
-	err := WritePlainResult(&buf, true, "proxynova", "user@example.com:secret")
+	r := &sources.Result{Source: "proxynova", Email: "user@example.com", Password: "secret"}
+	err := WritePlainResult(&buf, true, r)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
-	if got != "[proxynova] user@example.com:secret\n" {
-		t.Errorf("expected verbose line with source, got: %q", got)
+	if !strings.HasPrefix(got, "[proxynova] ") {
+		t.Errorf("expected verbose line with source prefix, got: %q", got)
 	}
 }
 
@@ -42,7 +48,8 @@ func (e *errWriter) Write(_ []byte) (int, error) {
 }
 
 func TestWritePlainResult_PropagatesWriteError(t *testing.T) {
-	err := WritePlainResult(&errWriter{}, false, "src", "value")
+	r := &sources.Result{Source: "src", Email: "test@test.com"}
+	err := WritePlainResult(&errWriter{}, false, r)
 	if err == nil {
 		t.Error("expected error from failing writer, got nil")
 	}
@@ -50,7 +57,8 @@ func TestWritePlainResult_PropagatesWriteError(t *testing.T) {
 
 func TestWriteJSONResult_ValidOutput(t *testing.T) {
 	var buf bytes.Buffer
-	err := WriteJSONResult(&buf, "leakcheck", "email:user@example.com, password:abc", "user@example.com")
+	r := &sources.Result{Source: "leakcheck", Email: "user@example.com", Password: "abc"}
+	err := WriteJSONResult(&buf, r, "user@example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,8 +69,11 @@ func TestWriteJSONResult_ValidOutput(t *testing.T) {
 	if !strings.Contains(out, `"target":"user@example.com"`) {
 		t.Errorf("expected target field, got: %q", out)
 	}
-	if !strings.Contains(out, `"value":"email:user@example.com, password:abc"`) {
-		t.Errorf("expected value field, got: %q", out)
+	if !strings.Contains(out, `"email":"user@example.com"`) {
+		t.Errorf("expected email field, got: %q", out)
+	}
+	if !strings.Contains(out, `"password":"abc"`) {
+		t.Errorf("expected password field, got: %q", out)
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Errorf("expected newline at end, got: %q", out)
@@ -71,7 +82,8 @@ func TestWriteJSONResult_ValidOutput(t *testing.T) {
 
 func TestWriteJSONResult_EscapesSpecialChars(t *testing.T) {
 	var buf bytes.Buffer
-	err := WriteJSONResult(&buf, "src", `value with "quotes" and \backslash`, "target")
+	r := &sources.Result{Source: "src", Password: `value with "quotes" and \backslash`}
+	err := WriteJSONResult(&buf, r, "target")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

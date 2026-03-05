@@ -41,6 +41,7 @@ type Options struct {
 	Type            sources.ScanType
 	UserAgent       string
 	Verbose         bool
+	Verify          bool // Verify enriches results with HIBP password checks and hash identification
 	Version         string
 }
 

@@ -6,7 +6,6 @@ import (
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
 	"io"
-	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +21,7 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 	wg := &sync.WaitGroup{}
 
 	// Process the results in a separate goroutine
+	verifier := NewVerifier(r.options.Verify)
 	seen := make(map[string]struct{})
 	wg.Add(1)
 	go func() {
@@ -32,17 +32,28 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 				logger.Errorf("error on enumerating target %s: %s", target, result.Error)
 				continue
 			}
+			// skip empty results
+			if !result.HasData() {
+				continue
+			}
+
+			// generate value string for filtering and deduplication
+			value := result.Value()
+
 			// check if filtered
-			if !r.options.NoFilter && !strings.Contains(strings.ToLower(result.Value), target) {
+			if !r.options.NoFilter && !result.Contains(target) {
 				continue
 			}
 			// deduplicate results across sources (unless disabled)
 			if !r.options.NoDeduplication {
-				if _, already := seen[result.Value]; already {
+				if _, already := seen[value]; already {
 					continue
 				}
-				seen[result.Value] = struct{}{}
+				seen[value] = struct{}{}
 			}
+
+			// enrich result with verification signals if enabled
+			verifier.EnrichResult(&result)
 
 			// increase number of results
 			numberOfResults++
@@ -50,9 +61,9 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 			// write result
 			for _, writer := range writers {
 				if r.options.JSON {
-					err = WriteJSONResult(writer, result.Source, result.Value, target)
+					err = WriteJSONResult(writer, &result, target)
 				} else {
-					err = WritePlainResult(writer, r.options.Verbose, result.Source, result.Value)
+					err = WritePlainResult(writer, r.options.Verbose, &result)
 				}
 				if err != nil {
 					logger.Errorf("could not write results for %s: %s", target, err)

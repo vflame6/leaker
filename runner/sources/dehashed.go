@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -120,37 +119,19 @@ func (s *DeHashed) Run(ctx context.Context, target string, scanType ScanType, se
 		}
 
 		for _, entry := range response.Entries {
-			var parts []string
-			if entry.Email != "" {
-				parts = append(parts, "email:"+entry.Email)
+			r := Result{
+				Source:   s.Name(),
+				Email:    entry.Email,
+				Username: entry.Username,
+				Password: entry.Password,
+				Hash:     entry.HashedPassword,
+				Name:     entry.Name,
+				Phone:    entry.Phone,
+				IP:       entry.IPAddress,
+				Database: entry.DatabaseName,
 			}
-			if entry.Username != "" {
-				parts = append(parts, "username:"+entry.Username)
-			}
-			if entry.Password != "" {
-				parts = append(parts, "password:"+entry.Password)
-			}
-			if entry.HashedPassword != "" {
-				parts = append(parts, "hash:"+entry.HashedPassword)
-			}
-			if entry.Name != "" {
-				parts = append(parts, "name:"+entry.Name)
-			}
-			if entry.Phone != "" {
-				parts = append(parts, "phone:"+entry.Phone)
-			}
-			if entry.IPAddress != "" {
-				parts = append(parts, "ip:"+entry.IPAddress)
-			}
-			if entry.DatabaseName != "" {
-				parts = append(parts, "database:"+entry.DatabaseName)
-			}
-
-			if len(parts) > 0 {
-				results <- Result{
-					Source: s.Name(),
-					Value:  strings.Join(parts, ", "),
-				}
+			if r.HasData() {
+				results <- r
 			}
 		}
 	}()
@@ -162,9 +143,6 @@ func (s *DeHashed) Name() string {
 	return "dehashed"
 }
 
-func (s *DeHashed) IsDefault() bool {
-	return false
-}
 
 func (s *DeHashed) NeedsKey() bool {
 	return true

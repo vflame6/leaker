@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -100,18 +99,30 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 				continue
 			}
 
-			var parts []string
-			for _, field := range []string{"email", "username", "password", "phone", "name", "ip", "url"} {
-				if val, ok := entry[field].(string); ok && val != "" {
-					parts = append(parts, field+":"+val)
-				}
+			r := Result{Source: s.Name()}
+			if val, ok := entry["email"].(string); ok && val != "" {
+				r.Email = val
 			}
-
-			if len(parts) > 0 {
-				results <- Result{
-					Source: s.Name(),
-					Value:  strings.Join(parts, ", "),
-				}
+			if val, ok := entry["username"].(string); ok && val != "" {
+				r.Username = val
+			}
+			if val, ok := entry["password"].(string); ok && val != "" {
+				r.Password = val
+			}
+			if val, ok := entry["phone"].(string); ok && val != "" {
+				r.Phone = val
+			}
+			if val, ok := entry["name"].(string); ok && val != "" {
+				r.Name = val
+			}
+			if val, ok := entry["ip"].(string); ok && val != "" {
+				r.IP = val
+			}
+			if val, ok := entry["url"].(string); ok && val != "" {
+				r.URL = val
+			}
+			if r.HasData() {
+				results <- r
 			}
 		}
 	}()
@@ -123,9 +134,6 @@ func (s *OSINTLeak) Name() string {
 	return "osintleak"
 }
 
-func (s *OSINTLeak) IsDefault() bool {
-	return false
-}
 
 func (s *OSINTLeak) NeedsKey() bool {
 	return true

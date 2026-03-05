@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -82,28 +81,22 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 		}
 
 		for _, entry := range response.Result {
-			var parts []string
-			if entry.Email != "" {
-				parts = append(parts, "email:"+entry.Email)
+			r := Result{
+				Source:   s.Name(),
+				Email:    entry.Email,
+				Password: entry.Password,
 			}
-			if entry.Password != "" {
-				parts = append(parts, "password:"+entry.Password)
-			}
-			if entry.Sha1 != "" {
-				parts = append(parts, "sha1:"+entry.Sha1)
-			}
+			// Prefer hash over sha1; store sha1 in hash field if hash is empty
 			if entry.Hash != "" {
-				parts = append(parts, "hash:"+entry.Hash)
+				r.Hash = entry.Hash
+			} else if entry.Sha1 != "" {
+				r.Hash = entry.Sha1
 			}
 			if entry.Sources != "" {
-				parts = append(parts, "sources:"+entry.Sources)
+				r.SetExtra("sources", entry.Sources)
 			}
-
-			if len(parts) > 0 {
-				results <- Result{
-					Source: s.Name(),
-					Value:  strings.Join(parts, ", "),
-				}
+			if r.HasData() {
+				results <- r
 			}
 		}
 	}()
@@ -115,9 +108,6 @@ func (s *BreachDirectory) Name() string {
 	return "breachdirectory"
 }
 
-func (s *BreachDirectory) IsDefault() bool {
-	return false
-}
 
 func (s *BreachDirectory) NeedsKey() bool {
 	return true

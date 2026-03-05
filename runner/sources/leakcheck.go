@@ -8,7 +8,6 @@ import (
 	"github.com/vflame6/leaker/utils"
 	"io"
 	"net/http"
-	"strings"
 )
 
 type LeakCheck struct {
@@ -51,7 +50,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  err,
 			}
 			return
@@ -65,7 +63,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  err,
 			}
 			return
@@ -76,7 +73,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  err,
 			}
 			return
@@ -87,7 +83,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  err,
 			}
 			return
@@ -97,7 +92,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if !ok || !success {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 			}
 			return
@@ -106,7 +100,6 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if !ok {
 			results <- Result{
 				Source: s.Name(),
-				Value:  "",
 				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 			}
 			return
@@ -117,41 +110,49 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			if !ok {
 				results <- Result{
 					Source: s.Name(),
-					Value:  "",
 					Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
 				}
 				return
 			}
 			for _, jsonResult := range jsonResults {
 				parseResult := jsonResult.(map[string]interface{})
-				var result []string
 				jsonFields, ok := parseResult["fields"].([]interface{})
 				if !ok {
-					// try to process next jsonResult
 					continue
 				}
 
+				r := Result{Source: s.Name()}
 				for _, jsonField := range jsonFields {
 					field := jsonField.(string)
-					jsonResultField, ok := parseResult[field].(string)
-					if !ok {
-						// try to process next jsonField
+					val, ok := parseResult[field].(string)
+					if !ok || val == "" {
 						continue
 					}
-					result = append(result, field+":"+jsonResultField)
+					switch field {
+					case "email":
+						r.Email = val
+					case "username":
+						r.Username = val
+					case "password":
+						r.Password = val
+					case "hash":
+						r.Hash = val
+					case "ip":
+						r.IP = val
+					case "phone":
+						r.Phone = val
+					case "name", "first_name", "last_name":
+						if r.Name != "" {
+							r.Name += " " + val
+						} else {
+							r.Name = val
+						}
+					default:
+						r.SetExtra(field, val)
+					}
 				}
-				if len(result) > 0 {
-					results <- Result{
-						Source: s.Name(),
-						Value:  strings.Join(result, ", "),
-						Error:  nil,
-					}
-				} else {
-					results <- Result{
-						Source: s.Name(),
-						Value:  "",
-						Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
-					}
+				if r.HasData() {
+					results <- r
 				}
 			}
 		}
@@ -165,9 +166,6 @@ func (s *LeakCheck) Name() string {
 	return "leakcheck"
 }
 
-func (s *LeakCheck) IsDefault() bool {
-	return false
-}
 
 func (s *LeakCheck) NeedsKey() bool {
 	return true

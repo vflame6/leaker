@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -89,14 +88,23 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 				if !ok {
 					continue
 				}
-				var parts []string
-				for _, field := range []string{"host", "user", "pass", "path"} {
-					if val, ok := entry[field].(string); ok && val != "" {
-						parts = append(parts, field+":"+val)
+				r := Result{Source: s.Name()}
+				if val, ok := entry["user"].(string); ok && val != "" {
+					r.Username = val
+				}
+				if val, ok := entry["pass"].(string); ok && val != "" {
+					r.Password = val
+				}
+				if host, ok := entry["host"].(string); ok && host != "" {
+					path, _ := entry["path"].(string)
+					if path != "" {
+						r.URL = host + path
+					} else {
+						r.URL = host
 					}
 				}
-				if len(parts) > 0 {
-					results <- Result{Source: s.Name(), Value: strings.Join(parts, ", ")}
+				if r.HasData() {
+					results <- r
 				}
 			}
 			return
@@ -111,19 +119,34 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 			for _, item := range arr {
 				switch v := item.(type) {
 				case map[string]interface{}:
-					var parts []string
-					parts = append(parts, "source:"+key)
-					for _, field := range []string{"email", "username", "user", "password", "pass", "host", "url"} {
-						if val, ok := v[field].(string); ok && val != "" {
-							parts = append(parts, field+":"+val)
-						}
+					r := Result{Source: s.Name()}
+					r.SetExtra("leak_type", key)
+					if val, ok := v["email"].(string); ok && val != "" {
+						r.Email = val
 					}
-					if len(parts) > 1 {
-						results <- Result{Source: s.Name(), Value: strings.Join(parts, ", ")}
+					if val, ok := v["username"].(string); ok && val != "" {
+						r.Username = val
+					} else if val, ok := v["user"].(string); ok && val != "" {
+						r.Username = val
+					}
+					if val, ok := v["password"].(string); ok && val != "" {
+						r.Password = val
+					} else if val, ok := v["pass"].(string); ok && val != "" {
+						r.Password = val
+					}
+					if val, ok := v["host"].(string); ok && val != "" {
+						r.URL = val
+					} else if val, ok := v["url"].(string); ok && val != "" {
+						r.URL = val
+					}
+					if r.HasData() {
+						results <- r
 					}
 				case string:
 					if v != "" {
-						results <- Result{Source: s.Name(), Value: key + ":" + v}
+						r := Result{Source: s.Name()}
+						r.SetExtra(key, v)
+						results <- r
 					}
 				}
 			}
@@ -137,9 +160,6 @@ func (s *LeakSight) Name() string {
 	return "leaksight"
 }
 
-func (s *LeakSight) IsDefault() bool {
-	return false
-}
 
 func (s *LeakSight) NeedsKey() bool {
 	return true
