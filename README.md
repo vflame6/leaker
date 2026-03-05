@@ -40,18 +40,18 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 | Source | API Key | Search Types | Pricing             |
 |--------|---------|-------------|---------------------|
-| [ProxyNova](https://www.proxynova.com/tools/comb) | No | all | Free                |
-| [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
-| [OSINTLeak](https://osintleak.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
-| [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [Snusbase](https://snusbase.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [LeakSight](https://leaksight.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
-| [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
+| [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
+| [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [LeakSight](https://leaksight.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [OSINTLeak](https://osintleak.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [ProxyNova](https://www.proxynova.com/tools/comb) | No | all | Free                |
+| [Snusbase](https://snusbase.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
 
 \* Hudson Rock works without an API key using the free OSINT endpoints (returns masked passwords). With a paid Cavalier API key, full credentials are returned.
 
@@ -148,17 +148,17 @@ docker build -t leaker .
 `leaker` generates a `provider-config.yml` file on first launch. Add your API keys there:
 
 ```yaml
-leakcheck: [YOUR_LEAKCHECK_API_KEY]
-osintleak: [YOUR_OSINTLEAK_API_KEY]
-intelx: [2.intelx.io:YOUR_INTELX_API_KEY]
 breachdirectory: [YOUR_RAPIDAPI_KEY]
-leaklookup: [YOUR_LEAKLOOKUP_API_KEY]
 dehashed: [YOUR_DEHASHED_API_KEY]
-snusbase: [YOUR_SNUSBASE_ACTIVATION_CODE]
-leaksight: [YOUR_LEAKSIGHT_TOKEN]
 hudsonrock: [YOUR_CAVALIER_API_KEY]
-whiteintel: [YOUR_WHITEINTEL_API_KEY]
+intelx: [2.intelx.io:YOUR_INTELX_API_KEY]
+leakcheck: [YOUR_LEAKCHECK_API_KEY]
+leaklookup: [YOUR_LEAKLOOKUP_API_KEY]
+leaksight: [YOUR_LEAKSIGHT_TOKEN]
+osintleak: [YOUR_OSINTLEAK_API_KEY]
+snusbase: [YOUR_SNUSBASE_ACTIVATION_CODE]
 weleakinfo: [YOUR_PUBLIC_KEY:YOUR_PRIVATE_KEY]
+whiteintel: [YOUR_WHITEINTEL_API_KEY]
 ```
 
 Each source accepts a list of API keys for load balancing:

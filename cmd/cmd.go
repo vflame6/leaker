@@ -44,6 +44,7 @@ var CLI struct {
 	NoFilter        bool   `help:"Disable results filtering, include every result"`
 	Output          string `short:"o" help:"File to write output to"`
 	Overwrite       bool   `help:"Force overwrite of existing output file"`
+	Verify          bool   `short:"V" help:"Verify credentials using HIBP password check and hash identification"`
 
 	// CONFIGURATION
 	ProviderConfig string `short:"p" help:"Provider config file" default:"provider-config.yml"`
@@ -144,6 +145,7 @@ func Run() {
 		Type:            scanType,
 		UserAgent:       CLI.UserAgent,
 		Verbose:         CLI.Verbose,
+		Verify:          CLI.Verify,
 		Version:         VERSION,
 	}
 

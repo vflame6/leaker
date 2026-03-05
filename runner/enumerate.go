@@ -22,6 +22,7 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 	wg := &sync.WaitGroup{}
 
 	// Process the results in a separate goroutine
+	verifier := NewVerifier(r.options.Verify)
 	seen := make(map[string]struct{})
 	wg.Add(1)
 	go func() {
@@ -43,6 +44,9 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 				}
 				seen[result.Value] = struct{}{}
 			}
+
+			// enrich result with verification signals if enabled
+			result.Value = verifier.EnrichResult(result.Value)
 
 			// increase number of results
 			numberOfResults++
