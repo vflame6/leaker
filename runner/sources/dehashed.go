@@ -46,7 +46,7 @@ func (s *DeHashed) Run(ctx context.Context, target string, scanType ScanType, se
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -143,6 +143,9 @@ func (s *DeHashed) Name() string {
 	return "dehashed"
 }
 
+func (s *DeHashed) UsesKey() bool {
+	return true
+}
 
 func (s *DeHashed) NeedsKey() bool {
 	return true

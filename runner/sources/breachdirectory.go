@@ -34,7 +34,7 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -108,6 +108,9 @@ func (s *BreachDirectory) Name() string {
 	return "breachdirectory"
 }
 
+func (s *BreachDirectory) UsesKey() bool {
+	return true
+}
 
 func (s *BreachDirectory) NeedsKey() bool {
 	return true

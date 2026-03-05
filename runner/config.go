@@ -32,7 +32,7 @@ func createProviderConfigYAML(configFilePath string) error {
 
 	sourcesRequiringApiKeysMap := make(map[string][]string)
 	for _, source := range AllSources {
-		if source.NeedsKey() {
+		if source.UsesKey() {
 			sourceName := strings.ToLower(source.Name())
 			sourcesRequiringApiKeysMap[sourceName] = []string{}
 		}

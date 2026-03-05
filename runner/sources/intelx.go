@@ -65,7 +65,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 	go func() {
 		defer close(results)
 
-		key := utils.PickRandom(s.apiKeys, s.Name())
+		key := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if key.apiKey == "" {
 			return
 		}
@@ -227,7 +227,10 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 			lines, status := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
 			if status == http.StatusPaymentRequired {
 				rateLimited = true
-				logger.Debugf("IntelX file read rate limited (402), stopping further reads")
+				results <- Result{
+					Source: s.Name(),
+					Error:  fmt.Errorf("IntelX file read rate limited (%d), stopping further reads", status),
+				}
 				continue
 			}
 			for _, line := range lines {
@@ -327,6 +330,9 @@ func (s *IntelX) Name() string {
 	return "intelx"
 }
 
+func (s *IntelX) UsesKey() bool {
+	return true
+}
 
 func (s *IntelX) NeedsKey() bool {
 	return true

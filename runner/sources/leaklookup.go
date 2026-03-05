@@ -28,7 +28,7 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -164,6 +164,9 @@ func (s *LeakLookup) Name() string {
 	return "leaklookup"
 }
 
+func (s *LeakLookup) UsesKey() bool {
+	return true
+}
 
 func (s *LeakLookup) NeedsKey() bool {
 	return true

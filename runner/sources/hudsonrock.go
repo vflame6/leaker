@@ -29,7 +29,7 @@ func (s *HudsonRock) Run(ctx context.Context, target string, scanType ScanType, 
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 
 		if randomApiKey == "" {
 			// Use free OSINT endpoints
@@ -200,8 +200,12 @@ func (s *HudsonRock) Name() string {
 	return "hudsonrock"
 }
 
+func (s *HudsonRock) UsesKey() bool {
+	return true
+}
 
 func (s *HudsonRock) NeedsKey() bool {
+	// HudsonRock can work without an API key
 	return false
 }
 

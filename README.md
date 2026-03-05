@@ -53,8 +53,6 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
 
-\* Hudson Rock works without an API key using the free OSINT endpoints (returns masked passwords). With a paid Cavalier API key, full credentials are returned.
-
 ## Usage
 
 ```shell
@@ -64,32 +62,29 @@ leaker -h
 ```yaml
 Usage: leaker <command> [flags]
 
-  leaker is a leak discovery tool that returns valid credential leaks for emails,
-  using passive online sources.
+  leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
 
 Flags:
-  -h, --help                 Show context-sensitive help.
-  -s, --sources=all,...      Specific sources to use for enumeration (default
-                             all). Use --list-sources to display all available
-                             sources.
-      --timeout=30s          Seconds to wait before timing out (default 30s)
-  -N, --no-rate-limit        Disable rate limiting (DANGER)
-  -j, --json                 Output results as JSONL (one JSON object per line)
-      --no-deduplication     Disable deduplication of results across sources
-      --no-filter            Disable results filtering, include every result
-  -o, --output=STRING        File to write output to
-      --overwrite            Force overwrite of existing output file
-  -p, --provider-config="provider-config.yml"
-                             Provider config file
-      --proxy=STRING         HTTP proxy to use with leaker
-  -A, --user-agent=STRING    Custom user agent
-      --insecure             Disable TLS certificate verification (use with
-                             caution)
-      --version              Print version of leaker
-  -q, --quiet                Suppress output, print results only
-  -v, --verbose              Show sources in results output
-  -D, --debug                Enable debug mode
-  -L, --list-sources         List all available sources
+  -h, --help                                     Show context-sensitive help.
+  -s, --sources=all,...                          Specific sources to use for enumeration (default all). 
+                                                 Use --list-sources to display all available sources.
+  --timeout=30s                                  Seconds to wait before timing out (default 30s)
+  -N, --no-rate-limit                            Disable rate limiting (DANGER)
+  -j, --json                                     Output results as JSONL (one JSON object per line)
+  --no-deduplication                             Disable deduplication of results across sources
+  --no-filter                                    Disable results filtering, include every result
+  -o, --output=STRING                            File to write output to
+  --overwrite                                    Force overwrite of existing output file
+  -V, --verify                                   Verify credentials using HIBP password check and hash identification
+  -p, --provider-config="provider-config.yml"    Provider config file
+  --proxy=STRING                                 HTTP proxy to use with leaker
+  -A, --user-agent=STRING                        Custom user agent
+  --insecure                                     Disable TLS certificate verification (use with caution)
+  --version                                      Print version of leaker
+  -q, --quiet                                    Suppress output, print results only
+  -v, --verbose                                  Show sources in results output
+  -D, --debug                                    Enable debug mode
+  -L, --list-sources                             List all available sources
 
 Commands:
   domain      Search by domain name.
@@ -148,17 +143,17 @@ docker build -t leaker .
 `leaker` generates a `provider-config.yml` file on first launch. Add your API keys there:
 
 ```yaml
-breachdirectory: [YOUR_RAPIDAPI_KEY]
-dehashed: [YOUR_DEHASHED_API_KEY]
-hudsonrock: [YOUR_CAVALIER_API_KEY]
-intelx: [2.intelx.io:YOUR_INTELX_API_KEY]
-leakcheck: [YOUR_LEAKCHECK_API_KEY]
-leaklookup: [YOUR_LEAKLOOKUP_API_KEY]
-leaksight: [YOUR_LEAKSIGHT_TOKEN]
-osintleak: [YOUR_OSINTLEAK_API_KEY]
-snusbase: [YOUR_SNUSBASE_ACTIVATION_CODE]
-weleakinfo: [YOUR_PUBLIC_KEY:YOUR_PRIVATE_KEY]
-whiteintel: [YOUR_WHITEINTEL_API_KEY]
+breachdirectory: [RAPIDAPI_KEY]
+dehashed: [DEHASHED_API_KEY]
+hudsonrock: [CAVALIER_API_KEY]
+intelx: [INTELX_API_URL:INTELX_API_KEY]
+leakcheck: [LEAKCHECK_API_KEY]
+leaklookup: [LEAKLOOKUP_API_KEY]
+leaksight: [LEAKSIGHT_TOKEN]
+osintleak: [OSINTLEAK_API_KEY]
+snusbase: [SNUSBASE_ACTIVATION_CODE]
+weleakinfo: [WELEAKINFO_PUBLIC_KEY:WELEAKINFO_PRIVATE_KEY]
+whiteintel: [WHITEINTEL_API_KEY]
 ```
 
 Each source accepts a list of API keys for load balancing:

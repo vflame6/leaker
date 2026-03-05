@@ -115,6 +115,9 @@ func (s *ProxyNova) Name() string {
 	return "proxynova"
 }
 
+func (s *ProxyNova) UsesKey() bool {
+	return false
+}
 
 func (s *ProxyNova) NeedsKey() bool {
 	return false

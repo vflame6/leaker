@@ -23,7 +23,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			close(results)
 		}()
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		// skip target if no keys are provided
 		if randomApiKey == "" {
 			return
@@ -166,6 +166,9 @@ func (s *LeakCheck) Name() string {
 	return "leakcheck"
 }
 
+func (s *LeakCheck) UsesKey() bool {
+	return true
+}
 
 func (s *LeakCheck) NeedsKey() bool {
 	return true

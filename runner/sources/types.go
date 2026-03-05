@@ -12,6 +12,9 @@ type Source interface {
 	// Name returns the name of the source. It is preferred to use lower case names.
 	Name() string
 
+	// UsesKey returns true if the source supports an API key
+	UsesKey() bool
+
 	// NeedsKey returns true if the source requires an API key
 	NeedsKey() bool
 

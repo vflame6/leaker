@@ -34,7 +34,7 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -144,6 +144,9 @@ func (s *Snusbase) Name() string {
 	return "snusbase"
 }
 
+func (s *Snusbase) UsesKey() bool {
+	return true
+}
 
 func (s *Snusbase) NeedsKey() bool {
 	return true

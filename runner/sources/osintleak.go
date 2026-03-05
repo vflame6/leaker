@@ -21,7 +21,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -134,6 +134,9 @@ func (s *OSINTLeak) Name() string {
 	return "osintleak"
 }
 
+func (s *OSINTLeak) UsesKey() bool {
+	return true
+}
 
 func (s *OSINTLeak) NeedsKey() bool {
 	return true

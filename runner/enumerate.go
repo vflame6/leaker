@@ -90,6 +90,7 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 			wg.Add(1)
 			go func(s sources.Source) {
 				defer wg.Done()
+
 				for result := range s.Run(ctx, target, scanType, session) {
 					select {
 					case results <- result:
@@ -97,6 +98,7 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 						return
 					}
 				}
+
 				// sleep to enable source rate-limiting
 				// this is done like that because target enumeration is done one by one
 				if !r.options.NoRateLimit {

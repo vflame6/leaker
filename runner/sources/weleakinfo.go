@@ -34,7 +34,7 @@ func (s *WeLeakInfo) Run(ctx context.Context, target string, scanType ScanType, 
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -148,6 +148,9 @@ func (s *WeLeakInfo) Name() string {
 	return "weleakinfo"
 }
 
+func (s *WeLeakInfo) UsesKey() bool {
+	return true
+}
 
 func (s *WeLeakInfo) NeedsKey() bool {
 	return true

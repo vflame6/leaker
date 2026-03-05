@@ -53,7 +53,7 @@ func TestCreateProviderConfigYAML_ContainsSourcesNeedingKeys(t *testing.T) {
 	// The YAML should contain that source name.
 	foundAny := false
 	for _, source := range AllSources {
-		if source.NeedsKey() {
+		if source.UsesKey() {
 			if strings.Contains(content, strings.ToLower(source.Name())) {
 				foundAny = true
 				break

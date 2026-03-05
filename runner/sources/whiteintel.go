@@ -47,7 +47,7 @@ func (s *WhiteIntel) Run(ctx context.Context, target string, scanType ScanType, 
 	go func() {
 		defer close(results)
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name())
+		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
 		if randomApiKey == "" {
 			return
 		}
@@ -159,6 +159,9 @@ func (s *WhiteIntel) Name() string {
 	return "whiteintel"
 }
 
+func (s *WhiteIntel) UsesKey() bool {
+	return true
+}
 
 func (s *WhiteIntel) NeedsKey() bool {
 	return true
