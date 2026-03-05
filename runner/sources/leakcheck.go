@@ -165,9 +165,6 @@ func (s *LeakCheck) Name() string {
 	return "leakcheck"
 }
 
-func (s *LeakCheck) IsDefault() bool {
-	return false
-}
 
 func (s *LeakCheck) NeedsKey() bool {
 	return true

@@ -152,9 +152,6 @@ func (s *LeakLookup) Name() string {
 	return "leaklookup"
 }
 
-func (s *LeakLookup) IsDefault() bool {
-	return false
-}
 
 func (s *LeakLookup) NeedsKey() bool {
 	return true

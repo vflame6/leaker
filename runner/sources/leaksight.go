@@ -137,9 +137,6 @@ func (s *LeakSight) Name() string {
 	return "leaksight"
 }
 
-func (s *LeakSight) IsDefault() bool {
-	return false
-}
 
 func (s *LeakSight) NeedsKey() bool {
 	return true

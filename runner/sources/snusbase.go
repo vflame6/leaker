@@ -130,9 +130,6 @@ func (s *Snusbase) Name() string {
 	return "snusbase"
 }
 
-func (s *Snusbase) IsDefault() bool {
-	return false
-}
 
 func (s *Snusbase) NeedsKey() bool {
 	return true

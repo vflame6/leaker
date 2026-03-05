@@ -115,9 +115,6 @@ func (s *BreachDirectory) Name() string {
 	return "breachdirectory"
 }
 
-func (s *BreachDirectory) IsDefault() bool {
-	return false
-}
 
 func (s *BreachDirectory) NeedsKey() bool {
 	return true

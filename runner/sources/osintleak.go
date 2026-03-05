@@ -123,9 +123,6 @@ func (s *OSINTLeak) Name() string {
 	return "osintleak"
 }
 
-func (s *OSINTLeak) IsDefault() bool {
-	return false
-}
 
 func (s *OSINTLeak) NeedsKey() bool {
 	return true

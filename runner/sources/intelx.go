@@ -313,9 +313,6 @@ func (s *IntelX) Name() string {
 	return "intelx"
 }
 
-func (s *IntelX) IsDefault() bool {
-	return false
-}
 
 func (s *IntelX) NeedsKey() bool {
 	return true

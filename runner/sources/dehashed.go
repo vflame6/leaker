@@ -162,9 +162,6 @@ func (s *DeHashed) Name() string {
 	return "dehashed"
 }
 
-func (s *DeHashed) IsDefault() bool {
-	return false
-}
 
 func (s *DeHashed) NeedsKey() bool {
 	return true

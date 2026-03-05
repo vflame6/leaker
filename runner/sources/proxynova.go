@@ -104,9 +104,6 @@ func (s *ProxyNova) Name() string {
 	return "proxynova"
 }
 
-func (s *ProxyNova) IsDefault() bool {
-	return true
-}
 
 func (s *ProxyNova) NeedsKey() bool {
 	return false

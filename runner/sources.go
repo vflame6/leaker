@@ -13,4 +13,7 @@ var AllSources = [...]sources.Source{
 	&sources.DeHashed{},
 	&sources.Snusbase{},
 	&sources.LeakSight{},
+	&sources.HudsonRock{},
+	&sources.WhiteIntel{},
+	&sources.WeLeakInfo{},
 }
