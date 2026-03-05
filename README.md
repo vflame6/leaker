@@ -28,7 +28,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ![leaker](static/leaker_demo.png)
 
-- **9 sources** — aggregates results from multiple leak databases
+- **12 sources** — aggregates results from multiple leak databases
 - **5 search types** — email, username, domain, keyword, phone
 - **Deduplication** — removes duplicate results across sources
 - **JSONL output** — structured output for pipelines (`-j`)
@@ -49,6 +49,11 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [Snusbase](https://snusbase.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [LeakSight](https://leaksight.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
+| [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
+| [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain, keyword, phone | Paid                |
+
+\* Hudson Rock works without an API key using the free OSINT endpoints (returns masked passwords). With a paid Cavalier API key, full credentials are returned.
 
 ## Usage
 
@@ -151,6 +156,9 @@ leaklookup: [YOUR_LEAKLOOKUP_API_KEY]
 dehashed: [YOUR_DEHASHED_API_KEY]
 snusbase: [YOUR_SNUSBASE_ACTIVATION_CODE]
 leaksight: [YOUR_LEAKSIGHT_TOKEN]
+hudsonrock: [YOUR_CAVALIER_API_KEY]
+whiteintel: [YOUR_WHITEINTEL_API_KEY]
+weleakinfo: [YOUR_PUBLIC_KEY:YOUR_PRIVATE_KEY]
 ```
 
 Each source accepts a list of API keys for load balancing:
