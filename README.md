@@ -14,9 +14,9 @@
 
 <p align="center">
   <a href="#features">Features</a> •
-  <a href="#usage">Usage</a> •
   <a href="#installation">Install</a> •
-  <a href="#configuration">Configuration</a>
+  <a href="#configuration">Configuration</a> •
+  <a href="#running-leaker">Usage</a>
 </p>
 
 Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
@@ -28,6 +28,8 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 ## Features
 
 ![leaker](static/leaker_demo.png)
+
+<br>
 
 - **12 sources** — aggregates results from multiple leak databases
 - **5 search types** — email, username, domain, keyword, phone
@@ -97,78 +99,25 @@ Commands:
   Run "leaker <command> --help" for more information on a command.
 ```
 
-### Examples
-
-Search by email:
-
-```shell
-leaker email user@example.com
-```
-
-Search by domain using specific sources and piped input:
-
-```shell
-echo "example.com" | leaker domain -s leakcheck,dehashed
-```
-
-Search by phone number with JSONL output:
-
-```shell
-leaker phone 1234567890 -j -o results.jsonl
-```
+Learn more about Leaker's options here: https://github.com/vflame6/leaker/wiki/Usage
 
 ## Installation
 
-`leaker` requires **go1.24** to install successfully.
+`leaker` requires **go1.24** to install successfully. Run the following command to install the latest version:
 
 ```shell
 go install -v github.com/vflame6/leaker@latest
 ```
 
-Compiled binaries are available on the [Releases](https://github.com/vflame6/leaker/releases) page.
+Learn about more ways to install leaker here: https://github.com/vflame6/leaker/wiki/Install
 
-Build from source:
+### Configuration
 
-```shell
-go build -o leaker main.go
-```
+`leaker` can be used right after the installation, however many sources require API keys to work. Learn more here: https://github.com/vflame6/leaker/wiki/Configuration
 
-Build with Docker:
+### Running Leaker
 
-```shell
-docker build -t leaker .
-```
-
-## Configuration
-
-`leaker` generates a `provider-config.yml` file on first launch. Add your API keys there:
-
-```yaml
-breachdirectory: [RAPIDAPI_KEY]
-dehashed: [DEHASHED_API_KEY]
-hudsonrock: [CAVALIER_API_KEY]
-intelx: [INTELX_API_URL:INTELX_API_KEY]
-leakcheck: [LEAKCHECK_API_KEY]
-leaklookup: [LEAKLOOKUP_API_KEY]
-leaksight: [LEAKSIGHT_TOKEN]
-osintleak: [OSINTLEAK_API_KEY]
-snusbase: [SNUSBASE_ACTIVATION_CODE]
-weleakinfo: [WELEAKINFO_PUBLIC_KEY:WELEAKINFO_PRIVATE_KEY]
-whiteintel: [WHITEINTEL_API_KEY]
-```
-
-Each source accepts a list of API keys for load balancing:
-
-```yaml
-leakcheck: [key1, key2, key3]
-```
-
-Intelligence X uses `HOST:API_KEY` format to support different tiers:
-
-```yaml
-intelx: [free.intelx.io:your-uuid]   # free tier
-intelx: [2.intelx.io:your-uuid]      # paid tier
-```
+Learn about how to run Leaker here: https://github.com/vflame6/leaker/wiki/Running
 
 ## Contributing
 
