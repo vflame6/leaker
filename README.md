@@ -25,11 +25,11 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 `leaker` is a leak discovery tool that returns valid credential leaks using passive online sources. It supports searching by email, username, domain, keyword, and phone number.
 
-## Features
-
 ![leaker](static/leaker_demo.png)
 
 ---
+
+## Features
 
 - **12 sources** — aggregates results from multiple leak databases
 - **5 search types** — email, username, domain, keyword, phone
