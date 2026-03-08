@@ -29,7 +29,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ![leaker](static/leaker_demo.png)
 
-<br>
+---
 
 - **12 sources** — aggregates results from multiple leak databases
 - **5 search types** — email, username, domain, keyword, phone
@@ -61,6 +61,8 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 ```shell
 leaker -h
 ```
+
+This will display help for the tool. Here are all the switches it supports.
 
 ```yaml
 Usage: leaker <command> [flags]
