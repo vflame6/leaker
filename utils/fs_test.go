@@ -64,6 +64,39 @@ func TestParseTargets_Empty(t *testing.T) {
 	}
 }
 
+func TestParseTargets_StdinAndFile(t *testing.T) {
+	// Simulate: echo "stdin@example.com" | leaker email targets.txt
+	// When both stdin=true and a file target are given, both should be read.
+	// We can't easily mock os.Stdin here, so we test that a file target
+	// is returned even when stdin=true (MultiReader behavior).
+	dir := t.TempDir()
+	f := filepath.Join(dir, "targets.txt")
+	if err := os.WriteFile(f, []byte("file@example.com\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// stdin=true but os.Stdin is a terminal in test — MultiReader will include
+	// both os.Stdin and the file reader. We verify no error is returned.
+	r, err := ParseTargets(f, true)
+	if err != nil {
+		t.Fatalf("unexpected error with stdin+file: %v", err)
+	}
+	if r == nil {
+		t.Fatal("expected non-nil reader for stdin+file")
+	}
+}
+
+func TestParseTargets_StdinAndInline(t *testing.T) {
+	// Simulate: echo "stdin@example.com" | leaker email "inline@example.com"
+	r, err := ParseTargets("inline@example.com", true)
+	if err != nil {
+		t.Fatalf("unexpected error with stdin+inline: %v", err)
+	}
+	if r == nil {
+		t.Fatal("expected non-nil reader for stdin+inline")
+	}
+}
+
 func TestCreateFileWithSafe_CreatesNewFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.txt")

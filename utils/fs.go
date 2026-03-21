@@ -11,28 +11,32 @@ import (
 )
 
 func ParseTargets(targets string, stdin bool) (io.Reader, error) {
-	// The tool will use STDIN if specified with CLI arguments
-	// STDIN input is preferred because of potential data loss from piped input
-	// We consider that CLI input (single email or file) cannot be lost, unlike piped output from other tools
+	var readers []io.Reader
+
+	// Add stdin if piped input is detected
 	if stdin {
-		return os.Stdin, nil
+		readers = append(readers, os.Stdin)
 	}
 
+	// Add CLI targets (file path or inline value)
 	if targets != "" {
-		// check if targets is a file
 		if FileExists(targets) {
 			f, err := os.Open(targets)
 			if err != nil {
 				return nil, err
 			}
-			return f, nil
+			readers = append(readers, f)
 		} else {
-			// if targets is not a file, process it like a line
-			return strings.NewReader(targets), nil
+			// Inline target — add newline so scanner reads it as a complete line
+			readers = append(readers, strings.NewReader(targets+"\n"))
 		}
 	}
 
-	return nil, errors.New("no targets provided")
+	if len(readers) == 0 {
+		return nil, errors.New("no targets provided")
+	}
+
+	return io.MultiReader(readers...), nil
 }
 
 // UserConfigDirOrDefault returns the user config directory or defaultConfigDir in case of error
