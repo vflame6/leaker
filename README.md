@@ -31,13 +31,13 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ## Features
 
-- **12 sources** — aggregates results from multiple leak databases
-- **5 search types** — email, username, domain, keyword, phone
-- **Deduplication** — removes duplicate results across sources
-- **JSONL output** — structured output for pipelines (`-j`)
-- **Rate limiting** — built-in per-source rate limits (disable with `-N`)
-- **Proxy support** — route traffic through HTTP proxy (`--proxy`)
-- **Multiple API keys** — load balancing across keys per source
+- **12 sources** - aggregates results from multiple leak databases
+- **5 search types** - email, username, domain, keyword, phone
+- **Deduplication** - removes duplicate results across sources
+- **JSONL output** - structured output for pipelines (`-j`)
+- **Rate limiting** - built-in per-source rate limits (disable with `-N`)
+- **Proxy support** - route traffic through HTTP proxy (`--proxy`)
+- **Multiple API keys** - load balancing across keys per source
 
 ### Available sources
 
