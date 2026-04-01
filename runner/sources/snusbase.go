@@ -39,9 +39,9 @@ type snusbaseHashLookupResponse struct {
 
 // snusbaseIPWhoisResponse handles ip-whois which returns IP -> object map.
 type snusbaseIPWhoisResponse struct {
-	Took    float64                            `json:"took"`
-	Size    int                                `json:"size"`
-	Results map[string]map[string]interface{}  `json:"results"`
+	Took    float64                           `json:"took"`
+	Size    int                               `json:"size"`
+	Results map[string]map[string]interface{} `json:"results"`
 }
 
 // snusbasePost sends a POST request to a Snusbase API endpoint.

@@ -33,16 +33,15 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		case TypeUsername:
 			searchType = "username"
 		case TypeDomain:
-			// OSINTLeak doesn't have a direct domain type; use email as closest match
-			searchType = "email"
+			searchType = "url"
 		case TypeKeyword:
-			searchType = "password"
+			searchType = "username"
 		case TypePhone:
 			searchType = "phone"
 		}
 
 		url := fmt.Sprintf(
-			"https://osintleak.com/search_api/?api_key=%s&query=%s&type=%s&stealerlogs=true&dbleaks=true&dbleaks2=true&page=1&page_size=100",
+			"https://osintleak.com/api/v1/search_api/?api_key=%s&query=%s&type=%s&stealerlogs=true&dbleaks=true&dbleaks2=true&page=1&page_size=100",
 			randomApiKey, target, searchType,
 		)
 
