@@ -35,7 +35,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		case TypeDomain:
 			searchType = "url"
 		case TypeKeyword:
-			searchType = "password"
+			searchType = "username"
 		case TypePhone:
 			searchType = "phone"
 		}
