@@ -33,8 +33,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		case TypeUsername:
 			searchType = "username"
 		case TypeDomain:
-			// OSINTLeak doesn't have a direct domain type; use email as closest match
-			searchType = "email"
+			searchType = "url"
 		case TypeKeyword:
 			searchType = "password"
 		case TypePhone:
