@@ -93,7 +93,7 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 				r.Hash = entry.Sha1
 			}
 			if entry.Sources != "" {
-				r.SetExtra("sources", entry.Sources)
+				r.Database = entry.Sources
 			}
 			if r.HasData() {
 				results <- r

@@ -3,14 +3,20 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/vflame6/leaker/runner/sources"
 	"io"
+
+	"github.com/vflame6/leaker/logger"
+	"github.com/vflame6/leaker/runner/sources"
 )
 
 func WritePlainResult(writer io.Writer, verbose bool, result *sources.Result) error {
 	value := result.Value()
 	if verbose {
-		_, err := fmt.Fprintf(writer, "[%s] %s\n", result.Source, value)
+		src := result.Source
+		if !logger.IsNoColor() {
+			src = logger.ColorCyan + result.Source + logger.ColorReset
+		}
+		_, err := fmt.Fprintf(writer, "[%s] %s\n", src, value)
 		return err
 	}
 	_, err := fmt.Fprintf(writer, "%s\n", value)
