@@ -42,7 +42,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		}
 
 		url := fmt.Sprintf(
-			"https://osintleak.com/search_api/?api_key=%s&query=%s&type=%s&stealerlogs=true&dbleaks=true&dbleaks2=true&page=1&page_size=100",
+			"https://osintleak.com/api/v1/search_api/?api_key=%s&query=%s&type=%s&stealerlogs=true&dbleaks=true&dbleaks2=true&page=1&page_size=100",
 			randomApiKey, target, searchType,
 		)
 
