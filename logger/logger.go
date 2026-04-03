@@ -10,13 +10,14 @@ import (
 
 // ANSI color codes
 const (
-	ColorReset  = "\033[0m"
-	ColorRed    = "\033[31m"
-	ColorGreen  = "\033[32m"
-	ColorYellow = "\033[33m"
-	ColorBlue   = "\033[34m"
-	ColorCyan   = "\033[36m"
-	ColorWhite  = "\033[37m"
+	ColorReset   = "\033[0m"
+	ColorRed     = "\033[31m"
+	ColorGreen   = "\033[32m"
+	ColorYellow  = "\033[33m"
+	ColorBlue    = "\033[34m"
+	ColorMagenta = "\033[35m"
+	ColorCyan    = "\033[36m"
+	ColorWhite   = "\033[37m"
 )
 
 // Level represents the severity of a log message.
@@ -40,13 +41,23 @@ var levelPrefixes = map[Level]string{
 	LevelVerbose: "[VERB]",
 }
 
+// levelLabels are the bare label words (without brackets) used for colored output.
+var levelLabels = map[Level]string{
+	LevelFatal:   "FATAL",
+	LevelError:   "ERR",
+	LevelWarning: "WARN",
+	LevelInfo:    "INFO",
+	LevelDebug:   "DEBUG",
+	LevelVerbose: "VERB",
+}
+
 var levelColors = map[Level]string{
 	LevelFatal:   ColorRed,
 	LevelError:   ColorRed,
 	LevelWarning: ColorYellow,
-	LevelInfo:    ColorGreen,
-	LevelDebug:   ColorCyan,
-	LevelVerbose: ColorBlue,
+	LevelInfo:    ColorBlue,
+	LevelDebug:   ColorMagenta,
+	LevelVerbose: ColorCyan,
 }
 
 // String returns the string representation of a Level.
@@ -123,7 +134,9 @@ func (l *Logger) log(level Level, format string, args ...any) {
 	prefix := level.String()
 	if !noColor {
 		if color, ok := levelColors[level]; ok {
-			prefix = color + prefix + ColorReset
+			// Color only the label word, not the brackets: [colorLABELreset]
+			label := levelLabels[level]
+			prefix = "[" + color + label + ColorReset + "]"
 		}
 	}
 	_, _ = fmt.Fprintf(output, "%s %s\n", prefix, msg)
