@@ -54,7 +54,12 @@ func UnmarshalFrom(file string) error {
 		sourceName := strings.ToLower(source.Name())
 		apiKeys := sourceApiKeysMap[sourceName]
 		if len(apiKeys) > 0 {
+			logger.Debugf("API key(s) found for %s.", sourceName)
 			source.AddApiKeys(apiKeys)
+		} else {
+			if source.NeedsKey() {
+				logger.Debugf("Cannot use the %s source because there is no API key/secret defined for it.", sourceName)
+			}
 		}
 	}
 	return err

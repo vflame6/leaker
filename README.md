@@ -124,3 +124,7 @@ Learn about how to run Leaker here: https://github.com/vflame6/leaker/wiki/Runni
 ## Contributing
 
 Feel free to open an issue if something does not work, or if you have any ideas to improve the tool.
+
+## Disclaimer
+
+Read the usage disclaimer at [DISCLAIMER.md](https://github.com/vflame6/leaker/blob/main/DISCLAIMER.md).
