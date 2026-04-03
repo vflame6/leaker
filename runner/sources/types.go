@@ -51,13 +51,13 @@ func (r *Result) SetExtra(key, value string) {
 
 // Value returns a formatted "field:value, field:value" string for display.
 // Fields are emitted in a fixed order for consistency.
-// Database is excluded — use VerboseValue() to include it.
+// Database is excluded — use MetadataValue() to include it.
 func (r *Result) Value() string {
 	return r.formatValue(false)
 }
 
-// VerboseValue returns Value() with the Database field included.
-func (r *Result) VerboseValue() string {
+// MetadataValue returns Value() with metadata fields (Database) included.
+func (r *Result) MetadataValue() string {
 	return r.formatValue(true)
 }
 
