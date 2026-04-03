@@ -31,6 +31,7 @@ type Result struct {
 	Username string
 	Password string
 	Hash     string
+	Salt     string
 	IP       string
 	Phone    string
 	Name     string
@@ -50,7 +51,17 @@ func (r *Result) SetExtra(key, value string) {
 
 // Value returns a formatted "field:value, field:value" string for display.
 // Fields are emitted in a fixed order for consistency.
+// Database is excluded — use VerboseValue() to include it.
 func (r *Result) Value() string {
+	return r.formatValue(false)
+}
+
+// VerboseValue returns Value() with the Database field included.
+func (r *Result) VerboseValue() string {
+	return r.formatValue(true)
+}
+
+func (r *Result) formatValue(includeDatabase bool) string {
 	var parts []string
 
 	if r.Email != "" {
@@ -65,6 +76,9 @@ func (r *Result) Value() string {
 	if r.Hash != "" {
 		parts = append(parts, "hash:"+r.Hash)
 	}
+	if r.Salt != "" {
+		parts = append(parts, "salt:"+r.Salt)
+	}
 	if r.IP != "" {
 		parts = append(parts, "ip:"+r.IP)
 	}
@@ -74,7 +88,7 @@ func (r *Result) Value() string {
 	if r.Name != "" {
 		parts = append(parts, "name:"+r.Name)
 	}
-	if r.Database != "" {
+	if includeDatabase && r.Database != "" {
 		parts = append(parts, "database:"+r.Database)
 	}
 	if r.URL != "" {
@@ -87,10 +101,17 @@ func (r *Result) Value() string {
 	return strings.Join(parts, ", ")
 }
 
+// DeduplicationKey returns a string used for deduplication across sources.
+// It is the same as Value() (without Database), so results that differ
+// only in Database name are considered duplicates.
+func (r *Result) DeduplicationKey() string {
+	return r.Value()
+}
+
 // HasData returns true if the result contains at least one data field.
 func (r *Result) HasData() bool {
 	return r.Email != "" || r.Username != "" || r.Password != "" ||
-		r.Hash != "" || r.IP != "" || r.Phone != "" ||
+		r.Hash != "" || r.Salt != "" || r.IP != "" || r.Phone != "" ||
 		r.Name != "" || r.Database != "" || r.URL != "" ||
 		len(r.Extra) > 0
 }
@@ -102,6 +123,7 @@ func (r *Result) Contains(target string) bool {
 		strings.Contains(strings.ToLower(r.Username), t) ||
 		strings.Contains(strings.ToLower(r.Password), t) ||
 		strings.Contains(strings.ToLower(r.Hash), t) ||
+		strings.Contains(strings.ToLower(r.Salt), t) ||
 		strings.Contains(strings.ToLower(r.IP), t) ||
 		strings.Contains(strings.ToLower(r.Phone), t) ||
 		strings.Contains(strings.ToLower(r.Name), t) ||

@@ -57,6 +57,7 @@ var CLI struct {
 	Quiet       bool `short:"q" help:"Suppress output, print results only"`
 	Verbose     bool `short:"v" help:"Show sources in results output"`
 	Debug       bool `short:"D" help:"Enable debug mode"`
+	NoColor     bool `help:"Disable colored output"`
 	ListSources bool `short:"L" help:"List all available sources"`
 }
 
@@ -131,6 +132,7 @@ func Run() {
 		Insecure:        CLI.Insecure,
 		JSON:            CLI.JSON,
 		ListSources:     CLI.ListSources,
+		NoColor:         CLI.NoColor,
 		NoDeduplication: CLI.NoDeduplication,
 		NoFilter:        CLI.NoFilter,
 		NoRateLimit:     CLI.NoRateLimit,

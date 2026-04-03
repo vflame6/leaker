@@ -8,6 +8,17 @@ import (
 	"sync"
 )
 
+// ANSI color codes
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorCyan   = "\033[36m"
+	ColorWhite  = "\033[37m"
+)
+
 // Level represents the severity of a log message.
 type Level int
 
@@ -29,6 +40,15 @@ var levelPrefixes = map[Level]string{
 	LevelVerbose: "[VERB]",
 }
 
+var levelColors = map[Level]string{
+	LevelFatal:   ColorRed,
+	LevelError:   ColorRed,
+	LevelWarning: ColorYellow,
+	LevelInfo:    ColorGreen,
+	LevelDebug:   ColorCyan,
+	LevelVerbose: ColorBlue,
+}
+
 // String returns the string representation of a Level.
 func (l Level) String() string {
 	if prefix, ok := levelPrefixes[l]; ok {
@@ -42,6 +62,7 @@ type Logger struct {
 	mu       sync.RWMutex
 	maxLevel Level
 	output   io.Writer
+	noColor  bool
 }
 
 // New creates a new Logger with the specified max level and output writer.
@@ -53,7 +74,6 @@ func New(maxLevel Level, output io.Writer) *Logger {
 }
 
 // SetMaxLevel sets the maximum logging level.
-// Messages with a level higher than maxLevel will not be logged.
 func (l *Logger) SetMaxLevel(level Level) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -74,10 +94,25 @@ func (l *Logger) SetOutput(w io.Writer) {
 	l.output = w
 }
 
+// SetNoColor disables or enables colored output.
+func (l *Logger) SetNoColor(noColor bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.noColor = noColor
+}
+
+// NoColor returns whether colored output is disabled.
+func (l *Logger) NoColor() bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.noColor
+}
+
 func (l *Logger) log(level Level, format string, args ...any) {
 	l.mu.RLock()
 	maxLevel := l.maxLevel
 	output := l.output
+	noColor := l.noColor
 	l.mu.RUnlock()
 
 	if level > maxLevel {
@@ -85,7 +120,13 @@ func (l *Logger) log(level Level, format string, args ...any) {
 	}
 
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(output, "%s %s\n", level.String(), msg)
+	prefix := level.String()
+	if !noColor {
+		if color, ok := levelColors[level]; ok {
+			prefix = color + prefix + ColorReset
+		}
+	}
+	_, _ = fmt.Fprintf(output, "%s %s\n", prefix, msg)
 }
 
 // Fatal logs a message at Fatal level and exits the program.
@@ -166,6 +207,16 @@ func GetMaxLevel() Level {
 // SetOutput sets the output destination for the DefaultLogger.
 func SetOutput(w io.Writer) {
 	DefaultLogger.SetOutput(w)
+}
+
+// SetNoColor disables or enables colored output on the DefaultLogger.
+func SetNoColor(noColor bool) {
+	DefaultLogger.SetNoColor(noColor)
+}
+
+// IsNoColor returns whether colored output is disabled on the DefaultLogger.
+func IsNoColor() bool {
+	return DefaultLogger.NoColor()
 }
 
 // Fatal logs a message at Fatal level using the DefaultLogger and exits.

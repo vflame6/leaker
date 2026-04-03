@@ -25,6 +25,7 @@ type Options struct {
 	Insecure        bool // Insecure disables TLS certificate verification when true
 	JSON            bool // JSON outputs results as JSONL (one JSON object per line)
 	ListSources     bool
+	NoColor         bool // NoColor disables colored output
 	NoDeduplication bool // NoDeduplication disables deduplication of results across sources
 	NoFilter        bool
 	NoRateLimit     bool
@@ -86,5 +87,8 @@ func (options *Options) ConfigureOutput() {
 	}
 	if options.Quiet {
 		logger.DefaultLogger.SetMaxLevel(logger.LevelFatal)
+	}
+	if options.NoColor {
+		logger.SetNoColor(true)
 	}
 }

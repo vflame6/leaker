@@ -122,6 +122,14 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 				}
 
 				r := Result{Source: s.Name()}
+
+				// Map source.name to Database (skip "Unknown" — it's their default for empty)
+				if sourceObj, ok := parseResult["source"].(map[string]interface{}); ok {
+					if sourceName, ok := sourceObj["name"].(string); ok && sourceName != "" && sourceName != "Unknown" {
+						r.Database = sourceName
+					}
+				}
+
 				for _, jsonField := range jsonFields {
 					field := jsonField.(string)
 					val, ok := parseResult[field].(string)

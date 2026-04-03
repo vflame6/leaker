@@ -155,7 +155,7 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 					r.Name = val
 				}
 				if val, ok := record["salt"].(string); ok && val != "" {
-					r.SetExtra("salt", val)
+					r.Salt = val
 				}
 				if r.HasData() {
 					pendingResults = append(pendingResults, r)

@@ -92,8 +92,8 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 			} else if entry.Sha1 != "" {
 				r.Hash = entry.Sha1
 			}
-			if entry.Sources != "" {
-				r.SetExtra("sources", entry.Sources)
+			if entry.Sources != "" && entry.Sources != "Unknown" {
+				r.Database = entry.Sources
 			}
 			if r.HasData() {
 				results <- r
