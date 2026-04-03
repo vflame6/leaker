@@ -9,10 +9,14 @@ import (
 	"github.com/vflame6/leaker/runner/sources"
 )
 
-func WritePlainResult(writer io.Writer, verbose bool, result *sources.Result) error {
+func WritePlainResult(writer io.Writer, verbose bool, includeMetadata bool, result *sources.Result) error {
 	var value string
+	if includeMetadata {
+		value = result.MetadataValue()
+	} else {
+		value = result.Value()
+	}
 	if verbose {
-		value = result.VerboseValue()
 		src := result.Source
 		if !logger.IsNoColor() {
 			src = logger.ColorCyan + result.Source + logger.ColorReset
@@ -20,14 +24,13 @@ func WritePlainResult(writer io.Writer, verbose bool, result *sources.Result) er
 		_, err := fmt.Fprintf(writer, "[%s] %s\n", src, value)
 		return err
 	}
-	value = result.Value()
 	_, err := fmt.Fprintf(writer, "%s\n", value)
 	return err
 }
 
 type jsonResult struct {
 	Source   string            `json:"source"`
-	Target   string            `json:"target"`
+	Target  string            `json:"target"`
 	Email    string            `json:"email,omitempty"`
 	Username string            `json:"username,omitempty"`
 	Password string            `json:"password,omitempty"`
@@ -41,8 +44,8 @@ type jsonResult struct {
 	Extra    map[string]string `json:"extra,omitempty"`
 }
 
-func WriteJSONResult(writer io.Writer, result *sources.Result, target string) error {
-	data, err := json.Marshal(jsonResult{
+func WriteJSONResult(writer io.Writer, includeMetadata bool, result *sources.Result, target string) error {
+	jr := jsonResult{
 		Source:   result.Source,
 		Target:   target,
 		Email:    result.Email,
@@ -53,10 +56,13 @@ func WriteJSONResult(writer io.Writer, result *sources.Result, target string) er
 		IP:       result.IP,
 		Phone:    result.Phone,
 		Name:     result.Name,
-		Database: result.Database,
 		URL:      result.URL,
 		Extra:    result.Extra,
-	})
+	}
+	if includeMetadata {
+		jr.Database = result.Database
+	}
+	data, err := json.Marshal(jr)
 	if err != nil {
 		return err
 	}

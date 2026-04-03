@@ -60,9 +60,9 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 			// write result
 			for _, writer := range writers {
 				if r.options.JSON {
-					err = WriteJSONResult(writer, &result, target)
+					err = WriteJSONResult(writer, r.options.IncludeMetadata, &result, target)
 				} else {
-					err = WritePlainResult(writer, r.options.Verbose, &result)
+					err = WritePlainResult(writer, r.options.Verbose, r.options.IncludeMetadata, &result)
 				}
 				if err != nil {
 					logger.Errorf("could not write results for %s: %s", target, err)

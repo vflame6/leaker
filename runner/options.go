@@ -22,6 +22,7 @@ var (
 // Options struct is used to store leaker options. Sort alphabetically
 type Options struct {
 	Debug           bool
+	IncludeMetadata bool // IncludeMetadata includes metadata fields (database) in output
 	Insecure        bool // Insecure disables TLS certificate verification when true
 	JSON            bool // JSON outputs results as JSONL (one JSON object per line)
 	ListSources     bool
