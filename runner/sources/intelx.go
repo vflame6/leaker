@@ -262,18 +262,8 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 				continue
 			}
 			for _, line := range lines {
-				r := Result{Source: s.Name()}
-				// IntelX returns lines in "email:password" or "email;password" format
-				sep := ":"
-				if strings.Contains(line, ";") && !strings.Contains(line, ":") {
-					sep = ";"
-				}
-				if idx := strings.Index(line, sep); idx > 0 {
-					r.Email = line[:idx]
-					r.Password = line[idx+1:]
-				} else {
-					r.Email = line
-				}
+				r := parseIntelxLine(line, lowerTarget)
+				r.Source = s.Name()
 				if r.HasData() {
 					results <- r
 				}
@@ -282,6 +272,144 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 	}()
 
 	return results
+}
+
+// parseIntelxLine parses a raw leak line from IntelX files.
+// Lines come in various formats:
+//   - email:password (combo list)
+//   - email;password
+//   - CSV: id,,email,hash,name (database dumps)
+//   - email:password:hash:salt
+//
+// The parser detects the format and maps fields to Result.
+func parseIntelxLine(line, target string) Result {
+	var r Result
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return r
+	}
+
+	// Try CSV format first (comma-separated with potential empty fields)
+	if strings.Count(line, ",") >= 2 {
+		parts := strings.Split(line, ",")
+		// Find which part contains the target email
+		emailIdx := -1
+		for i, p := range parts {
+			if strings.Contains(strings.ToLower(p), target) && strings.Contains(p, "@") {
+				emailIdx = i
+				break
+			}
+		}
+		if emailIdx >= 0 {
+			r.Email = strings.TrimSpace(parts[emailIdx])
+			// Assign remaining non-empty fields heuristically
+			for i, p := range parts {
+				if i == emailIdx {
+					continue
+				}
+				p = strings.TrimSpace(p)
+				if p == "" || p == "''" {
+					continue
+				}
+				assignIntelxField(&r, p)
+			}
+			return r
+		}
+	}
+
+	// Colon-separated: email:password or email:password:hash:extra
+	sep := ":"
+	if strings.Contains(line, ";") && !strings.Contains(line, ":") {
+		sep = ";"
+	}
+
+	parts := strings.SplitN(line, sep, 4)
+	switch len(parts) {
+	case 1:
+		r.Email = parts[0]
+	case 2:
+		r.Email = parts[0]
+		r.Password = parts[1]
+	case 3:
+		r.Email = parts[0]
+		r.Password = parts[1]
+		// Third field is typically a hash
+		if looksLikeHash(parts[2]) {
+			r.Hash = parts[2]
+		} else if parts[2] != "" && parts[2] != "''" {
+			r.SetExtra("field3", parts[2])
+		}
+	default: // 4+
+		r.Email = parts[0]
+		r.Password = parts[1]
+		if looksLikeHash(parts[2]) {
+			r.Hash = parts[2]
+		} else if parts[2] != "" && parts[2] != "''" {
+			r.SetExtra("field3", parts[2])
+		}
+		if parts[3] != "" && parts[3] != "''" {
+			r.Salt = parts[3]
+		}
+	}
+
+	return r
+}
+
+// assignIntelxField heuristically assigns a CSV field value to a Result.
+func assignIntelxField(r *Result, val string) {
+	if looksLikeHash(val) {
+		if r.Hash == "" {
+			r.Hash = val
+		}
+		return
+	}
+	// Numeric-only → could be user ID, skip unless it looks like a phone
+	isNumeric := true
+	for _, c := range val {
+		if c < '0' || c > '9' {
+			isNumeric = false
+			break
+		}
+	}
+	if isNumeric {
+		return // skip numeric IDs
+	}
+	// Otherwise treat as a name/label
+	if r.Name == "" {
+		r.Name = val
+	} else {
+		r.SetExtra("intelx_field", val)
+	}
+}
+
+// looksLikeHash returns true if the string looks like a hash (hex, base64, or prefixed).
+func looksLikeHash(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	// Prefixed hashes like 0x..., $2a$..., $H$...
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "$") {
+		return true
+	}
+	// Hex hash (32+ chars, all hex)
+	if len(s) >= 32 {
+		allHex := true
+		for _, c := range s {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				allHex = false
+				break
+			}
+		}
+		if allHex {
+			return true
+		}
+	}
+	// Base64-encoded hash (ends with = or ==, 20+ chars)
+	if len(s) >= 20 && (strings.HasSuffix(s, "=") || strings.HasSuffix(s, "==")) {
+		return true
+	}
+	return false
 }
 
 // fetchMatchingLines reads a file from IntelX and returns lines containing the target.

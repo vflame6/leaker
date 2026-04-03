@@ -37,19 +37,18 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 				continue
 			}
 
-			// generate value string for filtering and deduplication
-			value := result.Value()
-
 			// check if filtered
 			if !r.options.NoFilter && !result.Contains(target) {
 				continue
 			}
 			// deduplicate results across sources (unless disabled)
+			// DeduplicationKey excludes Database so results differing only by source DB are deduped
 			if !r.options.NoDeduplication {
-				if _, already := seen[value]; already {
+				dedupKey := result.DeduplicationKey()
+				if _, already := seen[dedupKey]; already {
 					continue
 				}
-				seen[value] = struct{}{}
+				seen[dedupKey] = struct{}{}
 			}
 
 			// enrich result with verification signals if enabled

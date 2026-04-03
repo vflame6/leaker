@@ -10,8 +10,9 @@ import (
 )
 
 func WritePlainResult(writer io.Writer, verbose bool, result *sources.Result) error {
-	value := result.Value()
+	var value string
 	if verbose {
+		value = result.VerboseValue()
 		src := result.Source
 		if !logger.IsNoColor() {
 			src = logger.ColorCyan + result.Source + logger.ColorReset
@@ -19,6 +20,7 @@ func WritePlainResult(writer io.Writer, verbose bool, result *sources.Result) er
 		_, err := fmt.Fprintf(writer, "[%s] %s\n", src, value)
 		return err
 	}
+	value = result.Value()
 	_, err := fmt.Fprintf(writer, "%s\n", value)
 	return err
 }
@@ -30,6 +32,7 @@ type jsonResult struct {
 	Username string            `json:"username,omitempty"`
 	Password string            `json:"password,omitempty"`
 	Hash     string            `json:"hash,omitempty"`
+	Salt     string            `json:"salt,omitempty"`
 	IP       string            `json:"ip,omitempty"`
 	Phone    string            `json:"phone,omitempty"`
 	Name     string            `json:"name,omitempty"`
@@ -46,6 +49,7 @@ func WriteJSONResult(writer io.Writer, result *sources.Result, target string) er
 		Username: result.Username,
 		Password: result.Password,
 		Hash:     result.Hash,
+		Salt:     result.Salt,
 		IP:       result.IP,
 		Phone:    result.Phone,
 		Name:     result.Name,

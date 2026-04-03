@@ -15,6 +15,45 @@ type OSINTLeak struct {
 	apiKeys []string
 }
 
+// osintleakIgnoredFields are internal/metadata fields that should not appear in results.
+var osintleakIgnoredFields = map[string]struct{}{
+	// Internal/metadata fields
+	"id":            {},
+	"ds":            {},
+	"log_info":      {},
+	"leak_id":       {},
+	"uuid":          {},
+	"log_name":      {}, // handled separately → Database
+	"log_timestamp": {}, // internal timestamp
+	// Primary fields handled explicitly
+	"email":      {},
+	"username":   {},
+	"password":   {},
+	"password2":  {},
+	"phone":      {},
+	"name":       {},
+	"first_name": {},
+	"last_name":  {},
+	"ip":         {},
+	"ip_address": {},
+	"url":        {},
+	"pass_hash":  {},
+	"pass_salt":  {},
+	// Geo/network metadata (noise in output)
+	"country":        {},
+	"country_name":   {},
+	"continent":      {},
+	"continent_name": {},
+	"asn":            {},
+	"as_name":        {},
+	"as_domain":      {},
+	// d2 dataset internal fields
+	"user_id":     {},
+	"joined_date": {},
+	"fb_id":       {},
+	"email2":      {},
+}
+
 func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
 	results := make(chan Result)
 
@@ -87,7 +126,6 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 			// Try "results" key as fallback
 			data, ok = response["results"].([]interface{})
 			if !ok {
-				// No results found or unexpected format
 				return
 			}
 		}
@@ -99,27 +137,57 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 			}
 
 			r := Result{Source: s.Name()}
-			if val, ok := entry["email"].(string); ok && val != "" {
-				r.Email = val
+
+			// Primary fields — extract with null/None handling
+			r.Email = osintleakString(entry, "email")
+			r.Username = osintleakString(entry, "username")
+			r.Password = osintleakString(entry, "password")
+			r.Phone = osintleakString(entry, "phone")
+			r.Name = osintleakString(entry, "name")
+			r.IP = osintleakString(entry, "ip")
+			r.URL = osintleakString(entry, "url")
+			r.Hash = osintleakString(entry, "pass_hash")
+			r.Salt = osintleakString(entry, "pass_salt")
+
+			// ip_address is used in d2 dataset entries
+			if r.IP == "" {
+				r.IP = osintleakString(entry, "ip_address")
 			}
-			if val, ok := entry["username"].(string); ok && val != "" {
-				r.Username = val
+
+			// Map log_name → Database (can be null or missing)
+			r.Database = osintleakString(entry, "log_name")
+
+			// Handle first_name/last_name if present
+			if fn := osintleakString(entry, "first_name"); fn != "" {
+				if r.Name != "" {
+					r.Name = fn + " " + r.Name
+				} else {
+					r.Name = fn
+				}
 			}
-			if val, ok := entry["password"].(string); ok && val != "" {
-				r.Password = val
+			if ln := osintleakString(entry, "last_name"); ln != "" {
+				if r.Name != "" {
+					r.Name += " " + ln
+				} else {
+					r.Name = ln
+				}
 			}
-			if val, ok := entry["phone"].(string); ok && val != "" {
-				r.Phone = val
+
+			// Extra fields — anything not in the ignored/primary set
+			for key, val := range entry {
+				if _, ignored := osintleakIgnoredFields[key]; ignored {
+					continue
+				}
+				if key == "first_name" || key == "last_name" {
+					continue
+				}
+				strVal := osintleakStringVal(val)
+				if strVal == "" {
+					continue
+				}
+				r.SetExtra(key, strVal)
 			}
-			if val, ok := entry["name"].(string); ok && val != "" {
-				r.Name = val
-			}
-			if val, ok := entry["ip"].(string); ok && val != "" {
-				r.IP = val
-			}
-			if val, ok := entry["url"].(string); ok && val != "" {
-				r.URL = val
-			}
+
 			if r.HasData() {
 				results <- r
 			}
@@ -127,6 +195,34 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 	}()
 
 	return results
+}
+
+// osintleakString extracts a string value from a map entry, treating null and "None" as empty.
+func osintleakString(entry map[string]interface{}, key string) string {
+	val, exists := entry[key]
+	if !exists || val == nil {
+		return ""
+	}
+	s, ok := val.(string)
+	if !ok || s == "None" {
+		return ""
+	}
+	return s
+}
+
+// osintleakStringVal converts an interface{} to a string, treating null and "None" as empty.
+func osintleakStringVal(val interface{}) string {
+	if val == nil {
+		return ""
+	}
+	s, ok := val.(string)
+	if !ok {
+		return ""
+	}
+	if s == "None" {
+		return ""
+	}
+	return s
 }
 
 func (s *OSINTLeak) Name() string {
