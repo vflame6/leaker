@@ -40,9 +40,6 @@ type intelxSearchRequest struct {
 var intelxLeakBuckets = []string{
 	"leaks.public",
 	"leaks.private",
-	"pastes",
-	"darknet.tor",
-	"darknet.i2p",
 }
 
 type intelxSearchResponse struct {
@@ -158,8 +155,10 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 			case <-ctx.Done():
 				s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
 				return
-			case <-time.After(2 * time.Second):
+			case <-time.After(time.Second / time.Duration(s.RateLimit())):
 			}
+
+			logger.Debugf("Sending a request for IntelX poll attempt %d", attempt)
 
 			resultReq, err := http.NewRequestWithContext(ctx, "GET",
 				fmt.Sprintf("%sintelligent/search/result?id=%s&limit=100", apiURL, searchID), nil)
@@ -417,6 +416,8 @@ func looksLikeHash(s string) bool {
 // which is the correct behavior — downstream filtering handles this naturally.
 func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiURL, apiKey string, record intelxResultRecord, target string) ([]string, int) {
 	readURL := fmt.Sprintf("%sfile/read?type=%d&limit=0", apiURL, record.Type)
+
+	logger.Debugf("Sending a request in IntelX source for file %s", record.Name)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", readURL, nil)
 	if err != nil {

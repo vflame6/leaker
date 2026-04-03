@@ -89,6 +89,7 @@ Flags:
   -q, --quiet                                    Suppress output, print results only
   -v, --verbose                                  Show sources in results output
   -D, --debug                                    Enable debug mode
+  --no-color                                     Disable colored output
   -L, --list-sources                             List all available sources
 
 Commands:

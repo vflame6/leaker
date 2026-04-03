@@ -155,6 +155,8 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 						} else {
 							r.Name = val
 						}
+					case "rdomain":
+						// Ignored
 					default:
 						r.SetExtra(field, val)
 					}
