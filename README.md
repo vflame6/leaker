@@ -71,7 +71,7 @@ Usage: leaker <command> [flags]
 
 Flags:
   -h, --help                                     Show context-sensitive help.
-  -s, --sources=all,...                          Specific sources to use for enumeration (default all). 
+  -s, --sources=all,...                          Specific sources to use for enumeration (default all).
                                                  Use --list-sources to display all available sources.
   --timeout=30s                                  Seconds to wait before timing out (default 30s)
   -N, --no-rate-limit                            Disable rate limiting (DANGER)
@@ -88,6 +88,7 @@ Flags:
   --version                                      Print version of leaker
   -q, --quiet                                    Suppress output, print results only
   -v, --verbose                                  Show sources in results output
+  -M, --include-metadata                         Include metadata fields (database) in output
   -D, --debug                                    Enable debug mode
   --no-color                                     Disable colored output
   -L, --list-sources                             List all available sources
