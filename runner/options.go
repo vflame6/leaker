@@ -24,7 +24,7 @@ var (
 type Options struct {
 	DBPath          string // DBPath is the local SQLite cache path (empty = use default)
 	Debug           bool
-	IncludeMetadata bool // IncludeMetadata includes metadata fields (database) in output
+	Metadata        bool // Metadata includes metadata fields (database) in output
 	Insecure        bool // Insecure disables TLS certificate verification when true
 	JSON            bool // JSON outputs results as JSONL (one JSON object per line)
 	ListSources     bool
@@ -85,9 +85,9 @@ func listSources(options *Options) {
 	for _, source := range sorted {
 		sourceName := source.Name()
 		if source.NeedsKey() {
-			fmt.Printf("%s *\n", sourceName)
+			fmt.Printf("  %s *\n", sourceName)
 		} else {
-			fmt.Printf("%s\n", sourceName)
+			fmt.Printf("  %s\n", sourceName)
 		}
 	}
 }

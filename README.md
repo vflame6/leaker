@@ -70,30 +70,30 @@ Usage: leaker <command> [flags]
   leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources.
 
 Flags:
-  -h, --help                                     Show context-sensitive help.
-  -s, --sources=online,...                       Sources to use for enumeration. 
-                                                 online (default), all, local, or explicit source names. 
-  --timeout=30s                                  Seconds to wait on each request before timing out (default 30s)
-  -N, --no-rate-limit                            Disable rate limiting (DANGER)
-  -j, --json                                     Output results as JSONL (one JSON object per line)
-  --no-deduplication                             Disable deduplication of results across sources
-  --no-filter                                    Disable results filtering, include every result
-  -o, --output=STRING                            File to write output to
-  --overwrite                                    Force overwrite of existing output file
-  -V, --verify                                   Verify credentials using HIBP password check and hash identification
-  -p, --provider-config=STRING                   Provider config file
-  --proxy=STRING                                 HTTP proxy to use with leaker
-  -A, --user-agent=STRING                        Custom user agent
-  --insecure                                     Disable TLS certificate verification (use with caution)
-  --db=STRING                                    Path to the local SQLite cache DB
-  --no-write-db                                  Disable writing results to the local SQLite cache
-  --version                                      Print version of leaker
-  -q, --quiet                                    Suppress output, print results only
-  -v, --verbose                                  Show sources in results output
-  -M, --include-metadata                         Include metadata fields (database) in output
-  -D, --debug                                    Enable debug mode
-  --no-color                                     Disable colored output
-  -L, --list-sources                             List all available sources
+  -h, --help                      Show context-sensitive help.
+  -s, --sources=online,...        Sources to use for enumeration. 
+                                  online (default), all, local, or explicit source names.
+  --timeout=30s                   Seconds to wait on each request before timing out
+  -N, --no-rate-limit             Disable rate limiting (DANGER)
+  -j, --json                      Output results as JSONL (one JSON object per line)
+  --no-deduplication              Disable deduplication of results across sources
+  --no-filter                     Disable results filtering, include every result
+  -o, --output=STRING             File to write output to
+  --overwrite                     Force overwrite of existing output file
+  -V, --verify                    Verify credentials using HIBP password check and hash identification
+  -p, --provider-config=STRING    Provider config file
+  --proxy=STRING                  HTTP proxy to use with leaker
+  -A, --user-agent=STRING         Custom user agent
+  --insecure                      Disable TLS certificate verification (use with caution)
+  --db=STRING                     Path to the local SQLite cache DB
+  --no-write-db                   Disable writing results to the local SQLite cache
+  --version                       Print version of leaker
+  -q, --quiet                     Suppress output, print results only
+  -v, --verbose                   Show sources in results output
+  -M, --metadata                  Include metadata fields (database) in output
+  -D, --debug                     Enable debug mode
+  --no-color                      Disable colored output
+  -L, --list-sources              List all available sources
 
 Commands:
   domain      Search by domain name.

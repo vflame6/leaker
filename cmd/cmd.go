@@ -33,7 +33,7 @@ var CLI struct {
 	} `cmd:"" help:"Search by username."`
 
 	// INPUT
-	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. Tokens: online (default), all, local, or explicit source names."`
+	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. online (default), all, local, or explicit source names."`
 
 	// OPTIMIZATION
 	Timeout     time.Duration `help:"Seconds to wait on each request before timing out" default:"30s"`
@@ -56,13 +56,13 @@ var CLI struct {
 	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache"`
 
 	// DEBUG
-	Version         bool `help:"Print version of leaker"`
-	Quiet           bool `short:"q" help:"Suppress output, print results only"`
-	Verbose         bool `short:"v" help:"Show sources in results output"`
-	IncludeMetadata bool `short:"M" help:"Include metadata fields (database) in output"`
-	Debug           bool `short:"D" help:"Enable debug mode"`
-	NoColor         bool `help:"Disable colored output"`
-	ListSources     bool `short:"L" help:"List all available sources"`
+	Version     bool `help:"Print version of leaker"`
+	Quiet       bool `short:"q" help:"Suppress output, print results only"`
+	Verbose     bool `short:"v" help:"Show sources in results output"`
+	Metadata    bool `short:"M" help:"Include metadata fields (database) in output"`
+	Debug       bool `short:"D" help:"Enable debug mode"`
+	NoColor     bool `help:"Disable colored output"`
+	ListSources bool `short:"L" help:"List all available sources"`
 }
 
 func Run() {
@@ -175,7 +175,7 @@ func Run() {
 		Type:            scanType,
 		UserAgent:       CLI.UserAgent,
 		Verbose:         CLI.Verbose,
-		IncludeMetadata: CLI.IncludeMetadata,
+		Metadata:        CLI.Metadata,
 		Verify:          CLI.Verify,
 		Version:         VERSION,
 		DBPath:          dbPath,
