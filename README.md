@@ -71,7 +71,7 @@ Usage: leaker <command> [flags]
 
 Flags:
   -h, --help                                     Show context-sensitive help.
-  -s, --sources=online,...                       Sources to use for enumeration. Tokens: 
+  -s, --sources=online,...                       Sources to use for enumeration. 
                                                  online (default), all, local, or explicit source names. 
   --timeout=30s                                  Seconds to wait on each request before timing out (default 30s)
   -N, --no-rate-limit                            Disable rate limiting (DANGER)
