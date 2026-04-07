@@ -64,6 +64,110 @@ func TestResult_Checksum_EmptyVsPresent(t *testing.T) {
 	}
 }
 
+func TestResult_TrimSpaces(t *testing.T) {
+	r := Result{
+		Source:   "  snusbase  ",
+		Email:    "  user@example.com\t",
+		Username: " alice ",
+		Password: "  keep me  ",
+		Hash:     "\tabc123\n",
+		Salt:     "  keep me too  ",
+		IP:       " 10.0.0.1 ",
+		Phone:    "  15551234567 ",
+		Name:     "\tAlice Example ",
+		Database: "  ExampleDB  ",
+		URL:      " https://example.com/leak ",
+	}
+	r.SetExtra("k1", "  v1  ")
+	r.SetExtra("k2", "\tv2\n")
+
+	r.TrimSpaces()
+
+	if r.Source != "snusbase" {
+		t.Errorf("Source not trimmed: %q", r.Source)
+	}
+	if r.Email != "user@example.com" {
+		t.Errorf("Email not trimmed: %q", r.Email)
+	}
+	if r.Username != "alice" {
+		t.Errorf("Username not trimmed: %q", r.Username)
+	}
+	if r.Password != "  keep me  " {
+		t.Errorf("Password should NOT be trimmed: %q", r.Password)
+	}
+	if r.Hash != "abc123" {
+		t.Errorf("Hash not trimmed: %q", r.Hash)
+	}
+	if r.Salt != "  keep me too  " {
+		t.Errorf("Salt should NOT be trimmed: %q", r.Salt)
+	}
+	if r.IP != "10.0.0.1" {
+		t.Errorf("IP not trimmed: %q", r.IP)
+	}
+	if r.Phone != "15551234567" {
+		t.Errorf("Phone not trimmed: %q", r.Phone)
+	}
+	if r.Name != "Alice Example" {
+		t.Errorf("Name not trimmed: %q", r.Name)
+	}
+	if r.Database != "ExampleDB" {
+		t.Errorf("Database not trimmed: %q", r.Database)
+	}
+	if r.URL != "https://example.com/leak" {
+		t.Errorf("URL not trimmed: %q", r.URL)
+	}
+	if r.Extra["k1"] != "v1" {
+		t.Errorf("Extra[k1] not trimmed: %q", r.Extra["k1"])
+	}
+	if r.Extra["k2"] != "v2" {
+		t.Errorf("Extra[k2] not trimmed: %q", r.Extra["k2"])
+	}
+}
+
+// Fields that contain only whitespace should become empty strings so that
+// HasData() downstream treats them as missing. This is the motivating bug:
+// sources occasionally return " " for fields like Name, which should not
+// print as "name:".
+func TestResult_TrimSpaces_WhitespaceOnlyBecomesEmpty(t *testing.T) {
+	r := Result{
+		Email: "real@example.com",
+		Name:  "   ",
+		URL:   "\t\n ",
+	}
+	r.TrimSpaces()
+	if r.Name != "" {
+		t.Errorf("whitespace-only Name should become empty, got %q", r.Name)
+	}
+	if r.URL != "" {
+		t.Errorf("whitespace-only URL should become empty, got %q", r.URL)
+	}
+	if r.Email != "real@example.com" {
+		t.Errorf("Email unexpectedly changed: %q", r.Email)
+	}
+}
+
+// A Result whose only non-empty field was whitespace should register as
+// having no data after TrimSpaces runs.
+func TestResult_TrimSpaces_CollapsesToNoData(t *testing.T) {
+	r := Result{Name: "   "}
+	if !r.HasData() {
+		t.Fatal("precondition: Name=\"   \" should register as data before trim")
+	}
+	r.TrimSpaces()
+	if r.HasData() {
+		t.Error("after trim, whitespace-only Result should have no data")
+	}
+}
+
+// TrimSpaces must be safe on a Result with a nil Extra map.
+func TestResult_TrimSpaces_NilExtra(t *testing.T) {
+	r := Result{Email: " x@y.com "}
+	r.TrimSpaces() // must not panic
+	if r.Email != "x@y.com" {
+		t.Errorf("Email not trimmed: %q", r.Email)
+	}
+}
+
 func TestResult_Checksum_Cached(t *testing.T) {
 	r := Result{Email: "user@example.com", Password: "p"}
 	first := r.Checksum()

@@ -50,6 +50,30 @@ type Result struct {
 	cachedChecksum string
 }
 
+// TrimSpaces strips leading and trailing whitespace from every string field
+// on the Result except Password and Salt, whose whitespace is considered
+// meaningful (leak dumps sometimes include passwords that intentionally
+// contain leading/trailing spaces). Extra map values are trimmed as well;
+// keys are left untouched because they are developer-defined identifiers.
+//
+// Fields that collapse to an empty string after trimming are left empty,
+// so the downstream HasData() check correctly drops results whose only
+// "content" was whitespace.
+func (r *Result) TrimSpaces() {
+	r.Source = strings.TrimSpace(r.Source)
+	r.Email = strings.TrimSpace(r.Email)
+	r.Username = strings.TrimSpace(r.Username)
+	r.Hash = strings.TrimSpace(r.Hash)
+	r.IP = strings.TrimSpace(r.IP)
+	r.Phone = strings.TrimSpace(r.Phone)
+	r.Name = strings.TrimSpace(r.Name)
+	r.Database = strings.TrimSpace(r.Database)
+	r.URL = strings.TrimSpace(r.URL)
+	for k, v := range r.Extra {
+		r.Extra[k] = strings.TrimSpace(v)
+	}
+}
+
 // SetExtra sets a key-value pair in the Extra map, initializing it if needed.
 func (r *Result) SetExtra(key, value string) {
 	if r.Extra == nil {

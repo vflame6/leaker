@@ -41,6 +41,11 @@ func (r *Runner) EnumerateSingleTarget(ctx context.Context, target string, scanT
 				logger.Errorf("error on enumerating target %s: %s", target, result.Error)
 				continue
 			}
+			// Normalize whitespace on every incoming result before any other
+			// check. Sources occasionally return fields that are only spaces
+			// (e.g. `name: " "`), which would otherwise slip past HasData()
+			// and print as empty `name:` pairs in the output.
+			result.TrimSpaces()
 			// skip empty results
 			if !result.HasData() {
 				continue
