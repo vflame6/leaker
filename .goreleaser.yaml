@@ -1,0 +1,3 @@
+builds:
+  - ldflags:
+      - -s -w -X github.com/vflame6/leaker/cmd.VERSION={{.Tag}}

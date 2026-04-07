@@ -79,6 +79,11 @@ func NewRunner(options *Options) (*Runner, error) {
 	// a fatal error.
 	dbPath := options.ResolvedDBPath()
 	writable := !options.NoWriteDB
+	if writable {
+		logger.Debugf("Using DB in read-write mode from: %s", dbPath)
+	} else {
+		logger.Debugf("Using database in read-only mode from: %s", dbPath)
+	}
 	db, err := OpenLeakerDB(dbPath, writable)
 	if err != nil {
 		logger.Fatalf("cannot open local DB at %s: %s", dbPath, err)
