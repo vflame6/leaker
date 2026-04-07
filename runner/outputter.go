@@ -30,7 +30,7 @@ func WritePlainResult(writer io.Writer, verbose bool, includeMetadata bool, resu
 
 type jsonResult struct {
 	Source   string            `json:"source"`
-	Target  string            `json:"target"`
+	Target   string            `json:"target"`
 	Email    string            `json:"email,omitempty"`
 	Username string            `json:"username,omitempty"`
 	Password string            `json:"password,omitempty"`

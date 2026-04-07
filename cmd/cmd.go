@@ -9,6 +9,7 @@ import (
 	"github.com/vflame6/leaker/runner/sources"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -32,7 +33,7 @@ var CLI struct {
 	} `cmd:"" help:"Search by username."`
 
 	// INPUT
-	Sources []string `short:"s" default:"all" help:"Specific sources to use for enumeration (default all). Use --list-sources to display all available sources."`
+	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. Tokens: 'online' (default; all online APIs, no local DB), 'all' (online + local), 'local' (only local DB), or explicit source names. Use --list-sources to display all available sources."`
 
 	// OPTIMIZATION
 	Timeout     time.Duration `help:"Seconds to wait before timing out (default 30s)" default:"30s"`
@@ -51,6 +52,8 @@ var CLI struct {
 	Proxy          string `help:"HTTP proxy to use with leaker"`
 	UserAgent      string `short:"A" help:"Custom user agent"`
 	Insecure       bool   `help:"Disable TLS certificate verification (use with caution)"`
+	DB             string `help:"Path to the local SQLite cache DB (overrides LEAKER_DB; default: <user-config>/leaker/leaker.db)"`
+	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache (overrides LEAKER_NO_WRITE_DB)"`
 
 	// DEBUG
 	Version         bool `help:"Print version of leaker"`
@@ -128,6 +131,30 @@ func Run() {
 		logger.Fatalf("Unknown command: %s", ctx.Command())
 	}
 
+	// Resolve --db / LEAKER_DB. Flag wins; fall back to env; empty means
+	// "use the runner default location".
+	dbPath := CLI.DB
+	if dbPath == "" {
+		dbPath = os.Getenv("LEAKER_DB")
+	}
+
+	// Resolve --no-write-db / LEAKER_NO_WRITE_DB. Flag wins when set true;
+	// otherwise parse the env value. Unparseable env values log a warning
+	// and are treated as false.
+	noWriteDB := CLI.NoWriteDB
+	if !noWriteDB {
+		if v := os.Getenv("LEAKER_NO_WRITE_DB"); v != "" {
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "true", "1":
+				noWriteDB = true
+			case "false", "0":
+				noWriteDB = false
+			default:
+				logger.Warnf("ignoring unparseable LEAKER_NO_WRITE_DB value: %q", v)
+			}
+		}
+	}
+
 	options := &runner.Options{
 		Debug:           CLI.Debug,
 		Insecure:        CLI.Insecure,
@@ -151,6 +178,8 @@ func Run() {
 		IncludeMetadata: CLI.IncludeMetadata,
 		Verify:          CLI.Verify,
 		Version:         VERSION,
+		DBPath:          dbPath,
+		NoWriteDB:       noWriteDB,
 	}
 
 	runCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

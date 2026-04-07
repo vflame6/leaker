@@ -65,6 +65,7 @@ func TestLevelPrefixesInOutput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			l := New(LevelVerbose, &buf)
+			l.SetNoColor(true)
 			tt.logFunc(l, "testmsg")
 			if !strings.Contains(buf.String(), tt.expected) {
 				t.Errorf("expected prefix %q in output %q", tt.expected, buf.String())

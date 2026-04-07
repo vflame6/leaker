@@ -18,6 +18,18 @@ import (
 type Runner struct {
 	options     *Options
 	scanSources []sources.Source
+	// leakerDB is the local SQLite cache handle. May be nil when writes
+	// are disabled and the DB does not exist on disk.
+	leakerDB *LeakerDB
+}
+
+// Close releases resources held by the runner (currently just the local
+// DB handle, if any). Safe on a nil receiver.
+func (r *Runner) Close() error {
+	if r == nil {
+		return nil
+	}
+	return r.leakerDB.Close()
 }
 
 // NewRunner creates a new runner struct instance by parsing
@@ -61,8 +73,37 @@ func NewRunner(options *Options) (*Runner, error) {
 		options: options,
 	}
 
-	err := r.configureSources()
-	return r, err
+	// Open the local DB cache. In writable mode, the file is created if
+	// missing; in read-only mode, a missing file yields a nil handle
+	// (a warning is logged below). A corrupt / incompatible schema is
+	// a fatal error.
+	dbPath := options.ResolvedDBPath()
+	writable := !options.NoWriteDB
+	db, err := OpenLeakerDB(dbPath, writable)
+	if err != nil {
+		logger.Fatalf("cannot open local DB at %s: %s", dbPath, err)
+	}
+	if db == nil {
+		// Read-only mode, no DB on disk.
+		logger.Warnf("local DB at %s does not exist; local search will return no results", dbPath)
+	}
+	r.leakerDB = db
+
+	// Inject the lookup function into any LocalDB source instance so
+	// its Run() can call LeakerDB.Search without importing the runner
+	// package (which would create a cycle).
+	for _, s := range AllSources {
+		if ldb, ok := s.(*sources.LocalDB); ok {
+			if db != nil {
+				ldb.Lookup = db.Search
+			}
+		}
+	}
+
+	if cfgErr := r.configureSources(); cfgErr != nil {
+		return r, cfgErr
+	}
+	return r, nil
 }
 
 func (r *Runner) configureSources() error {
@@ -71,9 +112,10 @@ func (r *Runner) configureSources() error {
 		r.options.Sources[i] = strings.TrimSpace(strings.ToLower(r.options.Sources[i]))
 	}
 
-	// check for wrong sources
+	// check for wrong sources. "all" and "online" are group tokens;
+	// every other token must match a real source by name.
 	var allSourcesNames []string
-	allSourcesNames = append(allSourcesNames, "all")
+	allSourcesNames = append(allSourcesNames, "all", "online")
 	for _, source := range AllSources {
 		allSourcesNames = append(allSourcesNames, source.Name())
 	}
@@ -83,17 +125,39 @@ func (r *Runner) configureSources() error {
 		}
 	}
 
-	// check if all sources are specified
-	if slices.Contains(r.options.Sources, "all") {
-		logger.Debug("Configuring leaker to use all available sources")
-		// add all sources
+	hasAll := slices.Contains(r.options.Sources, "all")
+	hasOnline := slices.Contains(r.options.Sources, "online")
+	hasLocal := slices.Contains(r.options.Sources, sources.LocalSourceName)
+
+	// "all" dominates: every source, including local.
+	if hasAll {
+		if hasOnline {
+			logger.Debug("Source token 'online' is redundant when 'all' is specified")
+		}
+		logger.Debug("Configuring leaker to use all available sources (online + local)")
+		r.scanSources = append(r.scanSources, AllSources[:]...)
+		return nil
+	}
+
+	// "online" + "local" == "all": every source.
+	if hasOnline && hasLocal {
+		logger.Debug("Configuring leaker to use all available sources (online + local)")
+		r.scanSources = append(r.scanSources, AllSources[:]...)
+		return nil
+	}
+
+	// "online" alone: every source EXCEPT local.
+	if hasOnline {
+		logger.Debug("Configuring leaker to use all online sources (excluding local)")
 		for _, source := range AllSources {
-			r.scanSources = append(r.scanSources, source)
+			if source.Name() != sources.LocalSourceName {
+				r.scanSources = append(r.scanSources, source)
+			}
 		}
 		return nil
 	}
 
-	// add selected sources
+	// Explicit name list. Match by name exactly as today.
 	logger.Debugf("Configuring leaker to use specified sources: %s", strings.Join(r.options.Sources, ", "))
 	for _, source := range AllSources {
 		if slices.Contains(r.options.Sources, strings.ToLower(source.Name())) {

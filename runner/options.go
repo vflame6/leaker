@@ -17,10 +17,12 @@ import (
 var (
 	configDir                     = utils.AppConfigDirOrDefault(".", "leaker")
 	defaultProviderConfigLocation = utils.GetEnvOrDefault("LEAKER_PROVIDER_CONFIG", filepath.Join(configDir, "provider-config.yaml"))
+	defaultDBLocation             = filepath.Join(configDir, "leaker.db")
 )
 
 // Options struct is used to store leaker options. Sort alphabetically
 type Options struct {
+	DBPath          string // DBPath is the local SQLite cache path (empty = use default)
 	Debug           bool
 	IncludeMetadata bool // IncludeMetadata includes metadata fields (database) in output
 	Insecure        bool // Insecure disables TLS certificate verification when true
@@ -30,6 +32,7 @@ type Options struct {
 	NoDeduplication bool // NoDeduplication disables deduplication of results across sources
 	NoFilter        bool
 	NoRateLimit     bool
+	NoWriteDB       bool // NoWriteDB disables writing to the local SQLite cache
 	Output          io.Writer
 	OutputFile      string
 	Overwrite       bool
@@ -47,6 +50,15 @@ type Options struct {
 	Version         string
 }
 
+// ResolvedDBPath returns the effective local DB path: the user-provided
+// DBPath if non-empty, otherwise the default under the user config dir.
+func (options *Options) ResolvedDBPath() string {
+	if options.DBPath != "" {
+		return options.DBPath
+	}
+	return defaultDBLocation
+}
+
 // ListSources prints all available sources to stdout.
 func ListSources() {
 	listSources(&Options{ProviderConfig: defaultProviderConfigLocation})
@@ -56,6 +68,13 @@ func listSources(options *Options) {
 	logger.Infof("Current list of available sources. [%d]", len(AllSources))
 	logger.Infof("Sources marked with an * require key(s) or token(s) to work.")
 	logger.Infof("You can modify %s to configure your keys/tokens.\n", options.ProviderConfig)
+
+	fmt.Println("Source groups:")
+	fmt.Println("  online   all online API sources (default)")
+	fmt.Println("  all      every source including local")
+	fmt.Println("  local    local SQLite database")
+	fmt.Println()
+	fmt.Println("Available sources:")
 
 	sorted := make([]sources.Source, len(AllSources))
 	copy(sorted, AllSources[:])

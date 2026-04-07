@@ -2,7 +2,10 @@ package sources
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -39,6 +42,12 @@ type Result struct {
 	URL      string
 	Extra    map[string]string
 	Error    error
+
+	// cachedChecksum stores the lazily computed SHA-256 hex digest of the
+	// canonical leak fields. Populated on first Checksum() call, or directly
+	// by LeakerDB.Search when reconstructing a row (which already knows the
+	// checksum from the DB primary key).
+	cachedChecksum string
 }
 
 // SetExtra sets a key-value pair in the Extra map, initializing it if needed.
@@ -101,11 +110,68 @@ func (r *Result) formatValue(includeDatabase bool) string {
 	return strings.Join(parts, ", ")
 }
 
-// DeduplicationKey returns a string used for deduplication across sources.
-// It is the same as Value() (without Database), so results that differ
-// only in Database name are considered duplicates.
-func (r *Result) DeduplicationKey() string {
-	return r.Value()
+// Checksum returns a stable SHA-256 hex digest over the canonical leak fields.
+// It excludes Database (so two records that differ only by source DB collapse
+// to one) and excludes Source/Error (which are not part of the leak content).
+// Extra is included with sorted keys so the encoding is deterministic.
+//
+// The first call computes and caches the digest on the Result; subsequent
+// calls return the cached value, even if fields are mutated afterwards.
+func (r *Result) Checksum() string {
+	if r.cachedChecksum != "" {
+		return r.cachedChecksum
+	}
+	r.cachedChecksum = computeChecksum(r)
+	return r.cachedChecksum
+}
+
+// SetCachedChecksum overrides the cached checksum without recomputing it.
+// Used by LeakerDB.Search when reconstructing a Result from a DB row where
+// the checksum is already known (it's the primary key of the row).
+func (r *Result) SetCachedChecksum(sum string) {
+	r.cachedChecksum = sum
+}
+
+// computeChecksum builds the canonical pipe-separated field string and
+// returns its lowercase SHA-256 hex digest.
+func computeChecksum(r *Result) string {
+	var b strings.Builder
+	b.WriteString("email:")
+	b.WriteString(r.Email)
+	b.WriteString("|username:")
+	b.WriteString(r.Username)
+	b.WriteString("|password:")
+	b.WriteString(r.Password)
+	b.WriteString("|hash:")
+	b.WriteString(r.Hash)
+	b.WriteString("|salt:")
+	b.WriteString(r.Salt)
+	b.WriteString("|ip:")
+	b.WriteString(r.IP)
+	b.WriteString("|phone:")
+	b.WriteString(r.Phone)
+	b.WriteString("|name:")
+	b.WriteString(r.Name)
+	b.WriteString("|url:")
+	b.WriteString(r.URL)
+
+	// Sort Extra keys for deterministic encoding.
+	if len(r.Extra) > 0 {
+		keys := make([]string, 0, len(r.Extra))
+		for k := range r.Extra {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			b.WriteString("|")
+			b.WriteString(k)
+			b.WriteString("=")
+			b.WriteString(r.Extra[k])
+		}
+	}
+
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
 }
 
 // HasData returns true if the result contains at least one data field.
