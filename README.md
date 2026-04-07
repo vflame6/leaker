@@ -71,9 +71,9 @@ Usage: leaker <command> [flags]
 
 Flags:
   -h, --help                                     Show context-sensitive help.
-  -s, --sources=all,...                          Specific sources to use for enumeration (default all).
-                                                 Use --list-sources to display all available sources.
-  --timeout=30s                                  Seconds to wait before timing out (default 30s)
+  -s, --sources=online,...                       Sources to use for enumeration. Tokens: 
+                                                 online (default), all, local, or explicit source names. 
+  --timeout=30s                                  Seconds to wait on each request before timing out (default 30s)
   -N, --no-rate-limit                            Disable rate limiting (DANGER)
   -j, --json                                     Output results as JSONL (one JSON object per line)
   --no-deduplication                             Disable deduplication of results across sources
@@ -81,10 +81,12 @@ Flags:
   -o, --output=STRING                            File to write output to
   --overwrite                                    Force overwrite of existing output file
   -V, --verify                                   Verify credentials using HIBP password check and hash identification
-  -p, --provider-config="provider-config.yml"    Provider config file
+  -p, --provider-config=STRING                   Provider config file
   --proxy=STRING                                 HTTP proxy to use with leaker
   -A, --user-agent=STRING                        Custom user agent
   --insecure                                     Disable TLS certificate verification (use with caution)
+  --db=STRING                                    Path to the local SQLite cache DB
+  --no-write-db                                  Disable writing results to the local SQLite cache
   --version                                      Print version of leaker
   -q, --quiet                                    Suppress output, print results only
   -v, --verbose                                  Show sources in results output

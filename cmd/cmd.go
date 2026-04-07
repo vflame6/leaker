@@ -26,17 +26,17 @@ var CLI struct {
 		Targets string `arg:"" optional:"" help:"Target keyword or file with keywords, one per line"`
 	} `cmd:"" help:"Search by keyword."`
 	Phone struct {
-		Targets string `arg:"" optional:"" help:"Target phone number or file with phone numbers, one per line (digits only, e.g. 79952341096)"`
+		Targets string `arg:"" optional:"" help:"Target phone number or file with phone numbers, one per line"`
 	} `cmd:"" help:"Search by phone number."`
 	Username struct {
 		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
 	} `cmd:"" help:"Search by username."`
 
 	// INPUT
-	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. Tokens: 'online' (default; all online APIs, no local DB), 'all' (online + local), 'local' (only local DB), or explicit source names. Use --list-sources to display all available sources."`
+	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. Tokens: online (default), all, local, or explicit source names."`
 
 	// OPTIMIZATION
-	Timeout     time.Duration `help:"Seconds to wait before timing out (default 30s)" default:"30s"`
+	Timeout     time.Duration `help:"Seconds to wait on each request before timing out" default:"30s"`
 	NoRateLimit bool          `short:"N" help:"Disable rate limiting (DANGER)"`
 
 	// OUTPUT
@@ -48,12 +48,12 @@ var CLI struct {
 	Verify          bool   `short:"V" help:"Verify credentials using HIBP password check and hash identification"`
 
 	// CONFIGURATION
-	ProviderConfig string `short:"p" help:"Provider config file" default:"provider-config.yml"`
+	ProviderConfig string `short:"p" help:"Provider config file"`
 	Proxy          string `help:"HTTP proxy to use with leaker"`
 	UserAgent      string `short:"A" help:"Custom user agent"`
 	Insecure       bool   `help:"Disable TLS certificate verification (use with caution)"`
-	DB             string `help:"Path to the local SQLite cache DB (overrides LEAKER_DB; default: <user-config>/leaker/leaker.db)"`
-	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache (overrides LEAKER_NO_WRITE_DB)"`
+	DB             string `help:"Path to the local SQLite cache DB"`
+	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache"`
 
 	// DEBUG
 	Version         bool `help:"Print version of leaker"`
