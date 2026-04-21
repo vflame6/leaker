@@ -87,7 +87,13 @@ func Run() {
 	}
 	// list available sources
 	if CLI.ListSources {
-		runner.ListSources()
+		runner.ListSources(&runner.Options{
+			ListSources:    CLI.ListSources,
+			NoColor:        CLI.NoColor,
+			Output:         os.Stdout,
+			ProviderConfig: CLI.ProviderConfig,
+			Quiet:          CLI.Quiet,
+		})
 		os.Exit(0)
 	}
 
