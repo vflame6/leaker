@@ -60,8 +60,18 @@ func (options *Options) ResolvedDBPath() string {
 }
 
 // ListSources prints all available sources to stdout.
-func ListSources() {
-	listSources(&Options{ProviderConfig: defaultProviderConfigLocation})
+func ListSources(options *Options) {
+	if options == nil {
+		options = &Options{}
+	}
+	if options.ProviderConfig == "" {
+		options.ProviderConfig = defaultProviderConfigLocation
+	}
+	if options.Output == nil {
+		options.Output = os.Stdout
+	}
+	options.ConfigureOutput()
+	listSources(options)
 }
 
 func listSources(options *Options) {
@@ -85,9 +95,9 @@ func listSources(options *Options) {
 	for _, source := range sorted {
 		sourceName := source.Name()
 		if source.NeedsKey() {
-			fmt.Printf("  %s *\n", sourceName)
+			fmt.Fprintf(options.Output, "%s *\n", sourceName)
 		} else {
-			fmt.Printf("  %s\n", sourceName)
+			fmt.Fprintf(options.Output, "%s\n", sourceName)
 		}
 	}
 }
@@ -101,6 +111,9 @@ func (options *Options) loadProvidersFrom(location string) {
 
 // ConfigureOutput configures the output on the screen
 func (options *Options) ConfigureOutput() {
+	logger.DefaultLogger.SetMaxLevel(logger.LevelInfo)
+	logger.SetNoColor(false)
+
 	// If the user desires verbose output, show verbose output
 	if options.Debug {
 		logger.DefaultLogger.SetMaxLevel(logger.LevelVerbose)
