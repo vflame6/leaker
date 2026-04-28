@@ -95,9 +95,9 @@ func listSources(options *Options) {
 	for _, source := range sorted {
 		sourceName := source.Name()
 		if source.NeedsKey() {
-			fmt.Fprintf(options.Output, "%s *\n", sourceName)
+			fmt.Fprintf(options.Output, "  %s *\n", sourceName)
 		} else {
-			fmt.Fprintf(options.Output, "%s\n", sourceName)
+			fmt.Fprintf(options.Output, "  %s\n", sourceName)
 		}
 	}
 }
