@@ -65,6 +65,29 @@ var CLI struct {
 	ListSources bool `short:"L" help:"List all available sources"`
 }
 
+func resolveDBPath(flagValue string, getenv func(string) string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return getenv("LEAKER_DB")
+}
+
+func resolveNoWriteDB(flagValue bool, getenv func(string) string, warnf func(string, ...any)) bool {
+	if flagValue {
+		return true
+	}
+	envValue := getenv("LEAKER_NO_WRITE_DB")
+	switch strings.ToLower(strings.TrimSpace(envValue)) {
+	case "true", "1":
+		return true
+	case "", "false", "0":
+		return false
+	default:
+		warnf("ignoring unparseable LEAKER_NO_WRITE_DB value: %q", envValue)
+		return false
+	}
+}
+
 func Run() {
 	parser, err := kong.New(&CLI,
 		kong.Name("leaker"),
@@ -139,27 +162,12 @@ func Run() {
 
 	// Resolve --db / LEAKER_DB. Flag wins; fall back to env; empty means
 	// "use the runner default location".
-	dbPath := CLI.DB
-	if dbPath == "" {
-		dbPath = os.Getenv("LEAKER_DB")
-	}
+	dbPath := resolveDBPath(CLI.DB, os.Getenv)
 
 	// Resolve --no-write-db / LEAKER_NO_WRITE_DB. Flag wins when set true;
 	// otherwise parse the env value. Unparseable env values log a warning
 	// and are treated as false.
-	noWriteDB := CLI.NoWriteDB
-	if !noWriteDB {
-		if v := os.Getenv("LEAKER_NO_WRITE_DB"); v != "" {
-			switch strings.ToLower(strings.TrimSpace(v)) {
-			case "true", "1":
-				noWriteDB = true
-			case "false", "0":
-				noWriteDB = false
-			default:
-				logger.Warnf("ignoring unparseable LEAKER_NO_WRITE_DB value: %q", v)
-			}
-		}
-	}
+	noWriteDB := resolveNoWriteDB(CLI.NoWriteDB, os.Getenv, logger.Warnf)
 
 	options := &runner.Options{
 		Debug:           CLI.Debug,
