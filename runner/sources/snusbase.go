@@ -125,10 +125,8 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 		var pendingResults []Result
 		hashSet := make(map[string]bool)
 		ipSet := make(map[string]bool)
-		var dbNames []string
 
 		for dbName, records := range searchResp.Results {
-			dbNames = append(dbNames, dbName)
 			for _, record := range records {
 				r := Result{
 					Source:   s.Name(),
