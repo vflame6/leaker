@@ -120,26 +120,23 @@ func (l *Logger) NoColor() bool {
 }
 
 func (l *Logger) log(level Level, format string, args ...any) {
-	l.mu.RLock()
-	maxLevel := l.maxLevel
-	output := l.output
-	noColor := l.noColor
-	l.mu.RUnlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	if level > maxLevel {
+	if level > l.maxLevel {
 		return
 	}
 
 	msg := fmt.Sprintf(format, args...)
 	prefix := level.String()
-	if !noColor {
+	if !l.noColor {
 		if color, ok := levelColors[level]; ok {
 			// Color only the label word, not the brackets: [colorLABELreset]
 			label := levelLabels[level]
 			prefix = "[" + color + label + ColorReset + "]"
 		}
 	}
-	_, _ = fmt.Fprintf(output, "%s %s\n", prefix, msg)
+	_, _ = fmt.Fprintf(l.output, "%s %s\n", prefix, msg)
 }
 
 // Fatal logs a message at Fatal level and exits the program.
