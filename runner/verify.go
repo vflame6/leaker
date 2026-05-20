@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -104,8 +105,7 @@ func (v *Verifier) hibpCount(password string) int {
 		}
 		lineSuffix := line[:colonIdx]
 		if strings.EqualFold(lineSuffix, suffix) {
-			n := 0
-			fmt.Sscanf(line[colonIdx+1:], "%d", &n)
+			n, _ := strconv.Atoi(strings.TrimSpace(line[colonIdx+1:]))
 			count = n
 			break
 		}
@@ -132,7 +132,9 @@ func (v *Verifier) fetchHIBPRange(prefix string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HIBP API returned status %d", resp.StatusCode)
@@ -191,7 +193,7 @@ func isHex(s string) bool {
 		return false
 	}
 	for _, c := range strings.ToLower(s) {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

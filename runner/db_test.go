@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/vflame6/leaker/runner/sources"
 )
@@ -173,6 +174,69 @@ func TestLeakerDB_Insert_Dedup(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("expected 2 rows, got %d", count)
+	}
+}
+
+func TestLeakerDB_InsertWaitsForConcurrentWriter(t *testing.T) {
+	path := tempDBPath(t)
+	db1, err := OpenLeakerDB(path, true)
+	if err != nil {
+		t.Fatalf("open db1: %v", err)
+	}
+	defer func() { _ = db1.Close() }()
+
+	db2, err := OpenLeakerDB(path, true)
+	if err != nil {
+		t.Fatalf("open db2: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	tx, err := db1.db.Begin()
+	if err != nil {
+		t.Fatalf("begin writer tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(
+		insertSQL,
+		"held-lock",
+		"seed",
+		"held@example.com",
+		"", "", "", "", "", "", "", "", "", "",
+		time.Now().Unix(),
+	); err != nil {
+		t.Fatalf("hold writer lock: %v", err)
+	}
+
+	insertErr := make(chan error, 1)
+	go func() {
+		insertErr <- db2.Insert(&sources.Result{Source: "snusbase", Email: "wait@example.com"})
+	}()
+
+	select {
+	case err := <-insertErr:
+		t.Fatalf("insert returned while another writer held the DB lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit writer tx: %v", err)
+	}
+
+	select {
+	case err := <-insertErr:
+		if err != nil {
+			t.Fatalf("insert should wait for the writer lock, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("insert did not complete after the writer lock was released")
+	}
+
+	var count int
+	if err := db1.db.QueryRow("SELECT COUNT(*) FROM leaks WHERE email='wait@example.com'").Scan(&count); err != nil {
+		t.Fatalf("count inserted row: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected waiting insert to persist one row, got %d", count)
 	}
 }
 

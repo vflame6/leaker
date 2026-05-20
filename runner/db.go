@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/vflame6/leaker/logger"
@@ -50,6 +51,8 @@ const metaDDL = `CREATE TABLE leaker_meta (
 )`
 
 const schemaVersion = "1"
+
+const leakerDBBusyTimeoutMS = 10_000
 
 // leaksIndexDDLs creates partial indexes on the most-searched columns,
 // restricted to non-empty values to keep them compact.
@@ -133,6 +136,12 @@ func OpenLeakerDB(path string, writable bool) (*LeakerDB, error) {
 	// Single connection is fine for our write patterns; more just means
 	// more file handles with nothing to gain.
 	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	if err := configureSQLiteLocking(db, writable); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	l := &LeakerDB{db: db, path: path, writable: writable}
 
@@ -158,6 +167,29 @@ func OpenLeakerDB(path string, writable bool) (*LeakerDB, error) {
 	}
 
 	return l, nil
+}
+
+func configureSQLiteLocking(db *sql.DB, writable bool) error {
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", leakerDBBusyTimeoutMS)); err != nil {
+		return fmt.Errorf("configure sqlite busy timeout: %w", err)
+	}
+	if !writable {
+		return nil
+	}
+
+	var journalMode string
+	if err := db.QueryRow("PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
+		logger.Warnf("could not enable WAL mode for local DB; concurrent runners may contend: %s", err)
+		return nil
+	}
+	if !strings.EqualFold(journalMode, "wal") {
+		logger.Warnf("local DB journal mode is %s, not WAL; concurrent runners may contend", journalMode)
+		return nil
+	}
+	if _, err := db.Exec("PRAGMA synchronous = NORMAL"); err != nil {
+		logger.Warnf("could not set SQLite synchronous=NORMAL for local DB: %s", err)
+	}
+	return nil
 }
 
 // bootstrapSchema creates both tables, the partial indexes, and seeds
