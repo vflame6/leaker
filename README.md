@@ -48,7 +48,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
 | [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
-| [LeakRadar](https://leakradar.io/) | Yes | email, username, domain | Paid                |
+| [LeakRadar](https://leakradar.io/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [LeakSight](https://leaksight.com/) | Yes | email, username, domain, keyword, phone | Paid                |
 | [OSINTLeak](https://osintleak.com/) | Yes | email, username, domain, keyword, phone | Paid                |

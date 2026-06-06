@@ -133,6 +133,73 @@ func TestLeakRadarUsernameSearchSetsIsEmailFalse(t *testing.T) {
 	}
 }
 
+func TestLeakRadarKeywordAndPhoneSearchUseUsernameSearch(t *testing.T) {
+	tests := []struct {
+		name     string
+		scanType ScanType
+		target   string
+	}{
+		{
+			name:     "keyword",
+			scanType: TypeKeyword,
+			target:   "alice",
+		},
+		{
+			name:     "phone",
+			scanType: TypePhone,
+			target:   "+15551234567",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("method = %s, want POST", r.Method)
+				}
+				if r.URL.Path != "/search/email" {
+					t.Errorf("path = %s, want /search/email", r.URL.Path)
+				}
+				if got := r.URL.Query().Get("auto_unlock"); got != "true" {
+					t.Errorf("auto_unlock = %q, want true", got)
+				}
+
+				var req leakRadarEmailSearchRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatalf("decode request: %v", err)
+				}
+				if req.Email != tt.target {
+					t.Errorf("email = %q, want %s", req.Email, tt.target)
+				}
+				if req.IsEmail == nil || *req.IsEmail {
+					t.Fatalf("is_email = %v, want false", req.IsEmail)
+				}
+
+				_, _ = w.Write([]byte(`{
+					"items": [
+						{"username": "` + tt.target + `", "password": "secret", "unlocked": true, "is_email": false}
+					],
+					"total": 1,
+					"total_unlocked": 1,
+					"page": 1,
+					"page_size": 100
+				}`))
+			}))
+			defer server.Close()
+
+			source := &LeakRadar{apiKeys: []string{"test-key"}, baseURL: server.URL}
+			results := collectLeakRadarResults(source.Run(context.Background(), tt.target, tt.scanType, testSession(server.Client())))
+
+			if len(results) != 1 {
+				t.Fatalf("expected one result, got %#v", results)
+			}
+			if results[0].Username != tt.target {
+				t.Errorf("Username = %q", results[0].Username)
+			}
+		})
+	}
+}
+
 func TestLeakRadarEmailSearchAutoUnlocksEveryFetchedPage(t *testing.T) {
 	var pages []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

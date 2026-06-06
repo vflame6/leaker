@@ -79,7 +79,7 @@ func (s *LeakRadar) Run(ctx context.Context, target string, scanType ScanType, s
 		case TypeEmail:
 			isEmail := true
 			leaks, err = s.searchEmail(ctx, session, apiKey, target, &isEmail)
-		case TypeUsername:
+		case TypeUsername, TypeKeyword, TypePhone:
 			isEmail := false
 			leaks, err = s.searchEmail(ctx, session, apiKey, target, &isEmail)
 		case TypeDomain:
