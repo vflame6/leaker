@@ -44,9 +44,9 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | Source | API Key | Search Types | Pricing             |
 |--------|---------|-------------|---------------------|
 | [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
-| [Breach House](https://breach.house/) (DarkEye) | Yes | domain | Paid                |
+| [Breach House](https://breach.house/) | Yes | domain | Paid                |
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [Have I Been Ransomed?](https://haveibeenransom.com/) (DarkEye) | Yes | domain | Paid                |
+| [Have I Been Ransomed?](https://haveibeenransom.com/) | Yes | domain | Paid                |
 | [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
 | [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
@@ -97,6 +97,7 @@ Flags:
   -D, --debug                     Enable debug mode
   --no-color                      Disable colored output
   -L, --list-sources              List all available sources
+  -C, --clear-database            Clear all cached rows from the local SQLite database (confirmation required)
 
 Commands:
   domain      Search by domain name.

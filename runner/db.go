@@ -260,6 +260,50 @@ func (l *LeakerDB) Close() error {
 	return nil
 }
 
+// Clear removes every cached leak row while preserving the database schema and metadata.
+func (l *LeakerDB) Clear() (int64, error) {
+	if l == nil || l.db == nil {
+		return 0, errors.New("local database is not open")
+	}
+	if !l.writable {
+		return 0, errors.New("local database is read-only")
+	}
+
+	result, err := l.db.Exec("DELETE FROM leaks")
+	if err != nil {
+		return 0, fmt.Errorf("clear local database: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count cleared database rows: %w", err)
+	}
+	return rows, nil
+}
+
+// ClearDatabase removes all cached leak rows from an existing database. It
+// leaves a missing database untouched instead of creating an empty one.
+func ClearDatabase(path string) (rows int64, exists bool, err error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	} else if err != nil {
+		return 0, false, fmt.Errorf("stat local database: %w", err)
+	}
+
+	db, err := OpenLeakerDB(path, true)
+	if err != nil {
+		return 0, true, err
+	}
+	rows, clearErr := db.Clear()
+	closeErr := db.Close()
+	if clearErr != nil {
+		return rows, true, clearErr
+	}
+	if closeErr != nil {
+		return rows, true, fmt.Errorf("close local database: %w", closeErr)
+	}
+	return rows, true, nil
+}
+
 // Insert writes a single result to the cache. Duplicates (same checksum)
 // are silently ignored via the INSERT OR IGNORE clause. A no-op on read-only
 // or nil handles.

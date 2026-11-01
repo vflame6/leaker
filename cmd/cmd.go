@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/alecthomas/kong"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner"
 	"github.com/vflame6/leaker/runner/sources"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -56,13 +58,14 @@ var CLI struct {
 	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache"`
 
 	// DEBUG
-	Version     bool `help:"Print version of leaker"`
-	Quiet       bool `short:"q" help:"Suppress output, print results only"`
-	Verbose     bool `short:"v" help:"Show sources in results output"`
-	Metadata    bool `short:"M" help:"Include metadata fields (database) in output"`
-	Debug       bool `short:"D" help:"Enable debug mode"`
-	NoColor     bool `help:"Disable colored output"`
-	ListSources bool `short:"L" help:"List all available sources"`
+	Version       bool `help:"Print version of leaker"`
+	Quiet         bool `short:"q" help:"Suppress output, print results only"`
+	Verbose       bool `short:"v" help:"Show sources in results output"`
+	Metadata      bool `short:"M" help:"Include metadata fields (database) in output"`
+	Debug         bool `short:"D" help:"Enable debug mode"`
+	NoColor       bool `help:"Disable colored output"`
+	ListSources   bool `short:"L" help:"List all available sources"`
+	ClearDatabase bool `short:"C" help:"Clear all cached rows from the local SQLite database"`
 }
 
 func resolveDBPath(flagValue string, getenv func(string) string) string {
@@ -70,6 +73,13 @@ func resolveDBPath(flagValue string, getenv func(string) string) string {
 		return flagValue
 	}
 	return getenv("LEAKER_DB")
+}
+
+func confirmClearDatabase(input io.Reader, output io.Writer, path string) bool {
+	fmt.Fprintf(output, "Clear all rows in the local database at %s? [y/N] ", path)
+	answer, _ := bufio.NewReader(input).ReadString('\n')
+	fmt.Fprintln(output)
+	return strings.EqualFold(strings.TrimSpace(answer), "y")
 }
 
 func resolveNoWriteDB(flagValue bool, getenv func(string) string, warnf func(string, ...any)) bool {
@@ -117,6 +127,24 @@ func Run() {
 			ProviderConfig: CLI.ProviderConfig,
 			Quiet:          CLI.Quiet,
 		})
+		os.Exit(0)
+	}
+	// clear the local database without requiring a scan command
+	if CLI.ClearDatabase {
+		dbPath := (&runner.Options{DBPath: resolveDBPath(CLI.DB, os.Getenv)}).ResolvedDBPath()
+		if !confirmClearDatabase(os.Stdin, os.Stderr, dbPath) {
+			fmt.Fprintln(os.Stderr, "Cancelled; local database was not changed.")
+			os.Exit(0)
+		}
+		rows, exists, err := runner.ClearDatabase(dbPath)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		if !exists {
+			fmt.Fprintf(os.Stderr, "No local database found at %s; nothing to clear.\n", dbPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "Cleared %d row(s) from the local database at %s.\n", rows, dbPath)
+		}
 		os.Exit(0)
 	}
 
