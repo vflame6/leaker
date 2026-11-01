@@ -183,14 +183,19 @@ func darkEyeGet(ctx context.Context, session *Session, product, endpoint, apiKey
 		}
 		return nil, fmt.Errorf("%s request failed: %s", product, darkEyeRedact(err.Error(), keys))
 	}
-	defer session.DiscardHTTPResponse(resp)
+	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, darkEyeMaxBodySize))
+	// Read one byte beyond the limit so an oversized response is detected rather
+	// than silently truncated. The deferred close avoids draining any excess.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, darkEyeMaxBodySize+1))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s response could not be read", product)
+	}
+	if len(body) > darkEyeMaxBodySize {
+		return nil, fmt.Errorf("%s response exceeded the %d-byte limit", product, darkEyeMaxBodySize)
 	}
 	logger.Debugf("Response from %s: status code [%d], size [%d]", product, resp.StatusCode, len(body))
 

@@ -251,7 +251,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 				break
 			}
 
-			lines, status := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
+			lines, status, readErr := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
 			if status == http.StatusPaymentRequired {
 				rateLimited = true
 				results <- Result{
@@ -266,6 +266,9 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 				if r.HasData() {
 					results <- r
 				}
+			}
+			if readErr != nil && ctx.Err() == nil {
+				results <- Result{Source: s.Name(), Error: readErr}
 			}
 		}
 	}()
@@ -414,7 +417,7 @@ func looksLikeHash(s string) bool {
 // fetchMatchingLines reads a file from IntelX and returns lines containing the target.
 // For redacted files (free tier), the content will be masked and won't match the target,
 // which is the correct behavior — downstream filtering handles this naturally.
-func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiURL, apiKey string, record intelxResultRecord, target string) ([]string, int) {
+func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiURL, apiKey string, record intelxResultRecord, target string) ([]string, int, error) {
 	readURL := fmt.Sprintf("%sfile/read?type=%d&limit=0", apiURL, record.Type)
 
 	logger.Debugf("Sending a request in IntelX source for file %s", record.Name)
@@ -422,7 +425,7 @@ func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiUR
 	req, err := http.NewRequestWithContext(ctx, "GET", readURL, nil)
 	if err != nil {
 		logger.Debugf("IntelX file read request error for %s: %v", record.Name, err)
-		return nil, 0
+		return nil, 0, fmt.Errorf("IntelX file read request could not be created")
 	}
 	// Set query params via url.Values to ensure proper encoding
 	q := req.URL.Query()
@@ -434,17 +437,18 @@ func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiUR
 	resp, err := session.Client.Do(req)
 	if err != nil {
 		logger.Debugf("IntelX file read error for %s: %v", record.Name, err)
-		return nil, 0
+		return nil, 0, fmt.Errorf("IntelX file read request failed")
 	}
-	defer session.DiscardHTTPResponse(resp)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Debugf("IntelX file read returned status %d for %s", resp.StatusCode, record.Name)
-		return nil, resp.StatusCode
+		return nil, resp.StatusCode, nil
 	}
 
-	// Read the response body with a size limit
-	limitedReader := io.LimitReader(resp.Body, maxFileReadSize)
+	// Read one byte past the cap to distinguish a complete file from a truncated
+	// one, then close the response without draining any remaining content.
+	limitedReader := &io.LimitedReader{R: resp.Body, N: maxFileReadSize + 1}
 	scanner := bufio.NewScanner(limitedReader)
 	// Increase scanner buffer for potentially long lines
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -456,12 +460,21 @@ func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiUR
 			matches = append(matches, line)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		logger.Debugf("IntelX file scan error for %s: %v", record.Name, err)
+		return matches, http.StatusOK, fmt.Errorf("IntelX file scan failed: %w", err)
+	}
+	if limitedReader.N == 0 {
+		err := fmt.Errorf("IntelX file exceeded the %d-byte read limit", maxFileReadSize)
+		logger.Debugf("IntelX file scan error for %s: %v", record.Name, err)
+		return matches, http.StatusOK, err
+	}
 
 	if len(matches) > 0 {
 		logger.Debugf("IntelX file %s: found %d matching lines", record.Name, len(matches))
 	}
 
-	return matches, http.StatusOK
+	return matches, http.StatusOK, nil
 }
 
 // isIntelxWebBucket returns true if the bucket contains web-crawled content
