@@ -7,7 +7,9 @@ import "github.com/vflame6/leaker/runner/sources"
 // from the default `-s online` resolution in configureSources.
 var AllSources = [...]sources.Source{
 	&sources.BreachDirectory{},
+	&sources.BreachHouse{},
 	&sources.DeHashed{},
+	&sources.HIBR{},
 	&sources.HudsonRock{},
 	&sources.IntelX{},
 	&sources.LeakCheck{},

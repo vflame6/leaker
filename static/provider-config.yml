@@ -2,7 +2,9 @@
 # Each source accepts a list of API keys (load balancing across multiple keys)
 
 breachdirectory: [YOUR_RAPIDAPI_KEY]
+breachhouse: [YOUR_BREACH_HOUSE_API_KEY]
 dehashed: [YOUR_DEHASHED_API_KEY]
+hibr: [YOUR_HIBR_API_KEY]
 hudsonrock: [YOUR_HUDSONROCK_API_KEY]
 intelx: [2.intelx.io:YOUR_INTELX_API_KEY]  # format: HOST:API_KEY (e.g. free.intelx.io:uuid or 2.intelx.io:uuid)
 leakcheck: [YOUR_LEAKCHECK_API_KEY]

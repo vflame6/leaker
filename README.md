@@ -31,7 +31,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ## Features
 
-- **13 sources** - aggregates results from multiple leak databases
+- **15 sources** - aggregates results from multiple leak databases
 - **5 search types** - email, username, domain, keyword, phone
 - **Deduplication** - removes duplicate results across sources
 - **JSONL output** - structured output for pipelines (`-j`)
@@ -44,7 +44,9 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | Source | API Key | Search Types | Pricing             |
 |--------|---------|-------------|---------------------|
 | [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
+| [Breach House](https://breach.house/) (DarkEye) | Yes | domain | Paid                |
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Have I Been Ransomed?](https://haveibeenransom.com/) (DarkEye) | Yes | domain | Paid                |
 | [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
 | [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
