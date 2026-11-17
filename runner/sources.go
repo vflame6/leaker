@@ -9,6 +9,7 @@ var AllSources = [...]sources.Source{
 	&sources.BreachDirectory{},
 	&sources.BreachHouse{},
 	&sources.DeHashed{},
+	&sources.Expose{},
 	&sources.HIBR{},
 	&sources.HudsonRock{},
 	&sources.IntelX{},

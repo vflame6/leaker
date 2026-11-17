@@ -4,6 +4,7 @@
 breachdirectory: [YOUR_RAPIDAPI_KEY]
 breachhouse: [YOUR_BREACH_HOUSE_API_KEY]
 dehashed: [YOUR_DEHASHED_API_KEY]
+expose: [YOUR_EXPOSE_API_KEY]  # https://expose.team/platform/access/api
 hibr: [YOUR_HIBR_API_KEY]
 hudsonrock: [YOUR_HUDSONROCK_API_KEY]
 intelx: [2.intelx.io:YOUR_INTELX_API_KEY]  # format: HOST:API_KEY (e.g. free.intelx.io:uuid or 2.intelx.io:uuid)
