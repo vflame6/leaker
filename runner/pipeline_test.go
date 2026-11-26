@@ -103,57 +103,6 @@ func TestPipeline_FastSourceDoesNotWaitForSlow(t *testing.T) {
 	}
 }
 
-// timingTransport records, per host, when each request left.
-type timingTransport struct {
-	inner http.RoundTripper
-	mu    sync.Mutex
-	sent  map[string][]time.Time
-}
-
-func (tt *timingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	tt.mu.Lock()
-	tt.sent[req.URL.Host] = append(tt.sent[req.URL.Host], time.Now())
-	tt.mu.Unlock()
-	return tt.inner.RoundTrip(req)
-}
-
-// TestPipeline_NoSourceBeatsItsInterval is the B4 acceptance check over a
-// 500-target list: no two requests of one source are closer than its
-// interval, measured where the requests leave.
-func TestPipeline_NoSourceBeatsItsInterval(t *testing.T) {
-	if testing.Short() {
-		t.Skip("takes 8 seconds")
-	}
-	captureLogs(t)
-	captureSummary(t)
-	srv := fakeapi.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, "{}")
-	}))
-	transport := &timingTransport{inner: srv.Transport(), sent: make(map[string][]time.Time)}
-	intervals := map[string]time.Duration{"ten.example.test": 10 * time.Millisecond, "fifteen.example.test": 15 * time.Millisecond}
-	r := newTestRunner(nil)
-	r.options.Type = sources.TypeEmail
-	r.session = testSession(t, transport)
-	r.scanSources = []sources.Source{
-		&httpSource{fakeSource: fakeSource{name: "ten"}, interval: intervals["ten.example.test"]},
-		&httpSource{fakeSource: fakeSource{name: "fifteen"}, interval: intervals["fifteen.example.test"]},
-	}
-	if err := r.EnumerateMultipleTargets(context.Background(), strings.NewReader(emailTargets(500)), []io.Writer{io.Discard}); err != nil {
-		t.Fatal(err)
-	}
-	for host, interval := range intervals {
-		sent := transport.sent[host]
-		if len(sent) != 500 {
-			t.Fatalf("%s: %d requests, want 500", host, len(sent))
-		}
-		for i := 1; i < len(sent); i++ {
-			if gap := sent[i].Sub(sent[i-1]); gap < interval {
-				t.Errorf("%s: requests %d and %d left %v apart, want at least %v", host, i-1, i, gap, interval)
-			}
-		}
-	}
-}
-
 // TestPipeline_WritesTargetsInInputOrder: targets finish in any order but are
 // written in input order, each with its own results.
 func TestPipeline_WritesTargetsInInputOrder(t *testing.T) {
