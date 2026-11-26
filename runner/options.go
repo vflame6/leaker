@@ -48,6 +48,7 @@ type Options struct {
 	Quiet            bool
 	Sources          []string
 	StatsFile        string    // StatsFile is the --stats-file path (empty = none)
+	Summary          bool      // Summary prints each target's per-source table (--stats)
 	Stdin            bool      // Stdin is true when stdin is piped or redirected, not a terminal
 	StdinReader      io.Reader // StdinReader replaces os.Stdin (tests only)
 	SummaryOutput    io.Writer // SummaryOutput receives the per-target tables (default stderr)

@@ -163,6 +163,7 @@ func TestPipeline_WritesTargetsInInputOrder(t *testing.T) {
 	slowFirst := &timedSource{fakeSource: fakeSource{name: "s"}, delay: func(target string) time.Duration { return delays[target] }}
 	r := newTestRunner(nil)
 	r.options.Type = sources.TypeEmail
+	r.options.Summary = true // --stats
 	r.scanSources = []sources.Source{slowFirst, &timedSource{fakeSource: fakeSource{name: "t"}, delay: func(string) time.Duration { return 0 }}}
 	var out bytes.Buffer
 	if err := r.EnumerateMultipleTargets(context.Background(), strings.NewReader(emailTargets(3)), []io.Writer{&out}); err != nil {

@@ -96,8 +96,8 @@ func (r *Runner) searchSource(ctx context.Context, s sources.Source, q sources.Q
 	return run
 }
 
-// finishTarget writes the results of a searched target, then its table and
-// summary line, and records the table for --stats-file. A target that every
+// finishTarget writes the results of a searched target, then its table
+// (with --stats) and summary line, and records the table for --stats-file. A target that every
 // source failed to search is errAllSourcesFailed, never "0 leaks".
 func (r *Runner) finishTarget(ctx context.Context, target string, scanType sources.ScanType, runs []sourceRun, writers []io.Writer, elapsed time.Duration) error {
 	kept := r.writeResults(ctx, target, scanType, runs, writers)
@@ -116,7 +116,7 @@ func (r *Runner) finishTarget(ctx context.Context, target string, scanType sourc
 	}
 	summary.Sources = r.summaryRows(runs, kept)
 	r.recordTarget(summary)
-	if !r.options.Quiet {
+	if r.options.Summary && !r.options.Quiet {
 		if err := writeSummaryTable(r.summaryOutput(), summary); err != nil {
 			logger.Errorf("could not print the summary of %s: %s", target, err)
 		}
@@ -186,7 +186,7 @@ func (r *Runner) writeResults(ctx context.Context, target string, scanType sourc
 			// Never write back what came from the local DB itself.
 			if r.leakerDB != nil && r.leakerDB.writable && result.Source != sources.LocalSourceName {
 				r.dbNotice.Do(func() {
-					logger.Infof("Saving results to the local database %s (disable with --no-write-db)", r.leakerDB.path)
+					logger.Infof("Saving results to the local database %s", r.leakerDB.path)
 				})
 				if err := r.leakerDB.Insert(&result); err != nil {
 					if !dbWriteSuppressed {

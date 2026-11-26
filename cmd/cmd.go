@@ -50,7 +50,7 @@ var CLI struct {
 	NoRateLimit bool          `short:"N" help:"Disable rate limiting (DANGER)"`
 	Threads     int           `short:"t" default:"10" help:"Targets to search at the same time"`
 	MaxResults  int           `default:"1000" help:"Records to fetch per source and target at most"`
-	MaxRequests int           `default:"3" help:"Search requests per source and target at most, to spare API credits"`
+	MaxRequests int           `default:"10" help:"Search requests per source and target at most, to spare API credits"`
 	All         bool          `help:"Fetch every record up to each API's cap (lifts --max-results, and --max-requests unless given)"`
 
 	// OUTPUT
@@ -59,6 +59,7 @@ var CLI struct {
 	NoFilter        bool   `help:"Disable results filtering, include every result"`
 	Output          string `short:"o" placeholder:"FILE" complete:"file" help:"File to write output to"`
 	Overwrite       bool   `help:"Force overwrite of existing output file"`
+	Stats           bool   `help:"Print a table of every source's status after each target"`
 	StatsFile       string `placeholder:"FILE" complete:"file" help:"Write the per-source table of every target to FILE as JSON"`
 
 	// CONFIGURATION
@@ -249,6 +250,7 @@ func Run() {
 		Quiet:            CLI.Quiet,
 		Sources:          CLI.Sources,
 		StatsFile:        CLI.StatsFile,
+		Summary:          CLI.Stats,
 		Targets:          targets,
 		Threads:          CLI.Threads,
 		Timeout:          CLI.Timeout,

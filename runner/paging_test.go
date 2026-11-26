@@ -43,7 +43,7 @@ func TestPaging_DeHashedAcceptance(t *testing.T) {
 		written                 int
 		notice                  bool
 	}{
-		{"defaults", 1000, 3, 1000, true},
+		{"defaults", 1000, 10, 1000, true},
 		{"--all", 0, 0, 4213, false},
 		{"--max-requests 1", 1000, 1, 1000, true},
 	}
@@ -88,6 +88,7 @@ func TestSearchSource_CapsAtMaxResults(t *testing.T) {
 	}
 	r := newTestRunner(nil)
 	r.options.Type = sources.TypeDomain
+	r.options.Summary = true // --stats
 	r.options.MaxResults = 1000
 	r.scanSources = []sources.Source{&fakeSource{name: "big", emits: many}}
 	var out strings.Builder

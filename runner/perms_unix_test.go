@@ -132,7 +132,7 @@ func TestEnumerate_FirstDBWriteNotice(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := strings.Count(logs.String(), "--no-write-db"); n != 1 {
+	if n := strings.Count(logs.String(), "Saving results to the local database"); n != 1 {
 		t.Errorf("notice printed %d times, want once:\n%s", n, logs)
 	}
 	if !strings.Contains(logs.String(), dbPath) {

@@ -67,6 +67,7 @@ func TestSummary_DeHashedTruncated(t *testing.T) {
 	}))
 	r := newTestRunner([]string{"dehashed"})
 	r.options.Type = sources.TypeDomain
+	r.options.Summary = true // --stats
 	r.options.MaxResults = 100
 	r.session = testSession(t, srv.Transport())
 	if err := r.configureSources(); err != nil {
@@ -102,6 +103,7 @@ func TestSummary_Statuses(t *testing.T) {
 		&fakeSource{name: sources.LocalSourceName},
 	}
 	r.options.Type = sources.TypeEmail
+	r.options.Summary = true // --stats
 	if err := r.configureSources(); err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +153,7 @@ func TestSummary_QuietPrintsNoTable(t *testing.T) {
 	summary := captureSummary(t)
 	r := newTestRunner(nil)
 	r.options.Type = sources.TypeEmail
+	r.options.Summary = true // --stats
 	r.options.Quiet = true
 	r.scanSources = []sources.Source{&fakeSource{name: "s"}}
 	if err := r.EnumerateSingleTarget(context.Background(), "jane@example.com", sources.TypeEmail, []io.Writer{io.Discard}); err != nil {
@@ -287,5 +290,24 @@ func TestWriteSummaryTable_OneWrite(t *testing.T) {
 	}
 	if w.writes != 1 {
 		t.Errorf("%d writes, want 1", w.writes)
+	}
+}
+
+// TestSummary_PrintedOnlyWhenAsked: the per-target table is printed with
+// --stats only.
+func TestSummary_PrintedOnlyWhenAsked(t *testing.T) {
+	captureLogs(t)
+	for _, asked := range []bool{false, true} {
+		summary := captureSummary(t)
+		r := newTestRunner(nil)
+		r.options.Type = sources.TypeEmail
+		r.options.Summary = asked
+		r.scanSources = []sources.Source{&fakeSource{name: "s"}}
+		if err := r.EnumerateMultipleTargets(context.Background(), strings.NewReader("jane@example.com\n"), []io.Writer{io.Discard}); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(summary.String(), "SOURCE"); got != asked {
+			t.Errorf("--stats %v: table printed = %v:\n%s", asked, got, summary)
+		}
 	}
 }

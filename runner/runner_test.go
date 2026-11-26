@@ -558,6 +558,7 @@ func TestEnumerate_LocalWinsDedup(t *testing.T) {
 		&fakeSource{name: sources.LocalSourceName, emits: []sources.Result{local}},
 	}
 	r.options.Type = sources.TypeEmail
+	r.options.Summary = true // --stats
 	r.options.Verbose = true
 	r.leakerDB = nil
 
@@ -696,5 +697,32 @@ func TestRunEnumeration_AllSourcesFailedIsRuntimeError(t *testing.T) {
 	var cfgErr *ConfigError
 	if err == nil || errors.As(err, &cfgErr) || !strings.Contains(err.Error(), "2 of 2 targets") {
 		t.Fatalf("err = %v, want a runtime error about 2 of 2 targets", err)
+	}
+}
+
+// TestEnumerate_DBNoticeNamesThePathOnly: the first write says where results
+// are saved, once, and nothing more.
+func TestEnumerate_DBNoticeNamesThePathOnly(t *testing.T) {
+	logs := captureLogs(t)
+	path := tempDBPath(t)
+	db, err := OpenLeakerDB(path, true)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	r := newTestRunner([]string{})
+	r.scanSources = []sources.Source{&fakeSource{name: "snusbase", emits: []sources.Result{
+		{Source: "snusbase", Email: "a@example.com", Password: "p1"},
+		{Source: "snusbase", Email: "a@example.com", Password: "p2"},
+	}}}
+	r.options.Type = sources.TypeEmail
+	r.leakerDB = db
+	if err := r.EnumerateSingleTarget(context.Background(), "a@example.com", sources.TypeEmail, []io.Writer{io.Discard}); err != nil {
+		t.Fatalf("enumerate: %v", err)
+	}
+	want := "Saving results to the local database " + path + "\n"
+	if n := strings.Count(logs.String(), want); n != 1 {
+		t.Errorf("want %q once in the logs, found %d:\n%s", want, n, logs)
 	}
 }

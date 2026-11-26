@@ -14,8 +14,8 @@ import (
 	"github.com/vflame6/leaker/internal/fakeapi"
 )
 
-// The run's defaults: --max-results 1000, --max-requests 3.
-var defaultQuery = Query{MaxResults: 1000, MaxRequests: 3}
+// The run's defaults: --max-results 1000, --max-requests 10.
+var defaultQuery = Query{MaxResults: 1000, MaxRequests: 10}
 
 func query(q Query, target string, st ScanType) Query {
 	q.Target, q.Type = target, st

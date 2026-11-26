@@ -140,6 +140,22 @@ func TestCLI_RemovedFlagsAreUnknown(t *testing.T) {
 	}
 }
 
+// TestCLI_StatsFlagPrintsTheTable: the per-source table is printed with
+// --stats only.
+func TestCLI_StatsFlagPrintsTheTable(t *testing.T) {
+	proxy := fakeapi.NewProxy(t) // refuses every request
+	for _, stats := range []bool{false, true} {
+		args := []string{"email", "jane@example.com", "-s", "proxynova", "--no-color", "--proxy", proxy.URL}
+		if stats {
+			args = append(args, "--stats")
+		}
+		result := runLeaker(t, args...)
+		if got := strings.Contains(result.stderr, "SOURCE"); got != stats {
+			t.Errorf("--stats %v: table printed = %v\nstderr:\n%s", stats, got, result.stderr)
+		}
+	}
+}
+
 // TestCLI_UsageErrorExitsTwo: kong's own usage errors use exit code 2 too.
 func TestCLI_UsageErrorExitsTwo(t *testing.T) {
 	result := runLeaker(t, "email", "--no-such-flag")

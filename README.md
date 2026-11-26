@@ -32,8 +32,8 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 - **17 sources** - aggregates results from multiple leak databases
 - **5 search types** - email, username, domain, keyword, phone; a source runs only the types its API can search
-- **Per-source summary** - after each target, a table of every source's status (ok, truncated, no key, auth, quota, ...), records fetched and kept, requests and credits; `--stats-file run.json` saves it
-- **Pagination with a credit guard** - up to `--max-results` records (default 1000) in up to `--max-requests` requests (default 3; IntelX reads 10 files) per source and target, or `--all`; a notice says when results were left behind and how to get them
+- **Per-source summary** - with `--stats`, a table after each target of every source's status (ok, truncated, no key, auth, quota, ...), records fetched and kept, requests and credits; `--stats-file run.json` saves it as JSON
+- **Pagination with a credit guard** - up to `--max-results` records (default 1000) in up to `--max-requests` requests (default 10; IntelX counts file reads) per source and target, or `--all`; a notice says when results were left behind and how to get them
 - **Parallel targets** - every source works through the target list at its own pace, up to `-t` targets at once (default 10)
 - **Retries** - 429, 502, 503 and 504 are retried with backoff, honouring `Retry-After`; redirects are never followed, so API keys never reach another host
 - **Deduplication** - removes duplicate results across sources
@@ -91,13 +91,14 @@ Flags:
   -N, --no-rate-limit             Disable rate limiting (DANGER)
   -t, --threads=10                Targets to search at the same time
   --max-results=1000              Records to fetch per source and target at most
-  --max-requests=3                Search requests per source and target at most, to spare API credits
+  --max-requests=10               Search requests per source and target at most, to spare API credits
   --all                           Fetch every record up to each API's cap (lifts --max-results, and --max-requests unless given)
   -j, --json                      Output results as JSONL (one JSON object per line)
   --no-deduplication              Disable deduplication of results across sources
   --no-filter                     Disable results filtering, include every result
   -o, --output=FILE               File to write output to
   --overwrite                     Force overwrite of existing output file
+  --stats                         Print a table of every source's status after each target
   --stats-file=FILE               Write the per-source table of every target to FILE as JSON
   -p, --provider-config=FILE      Provider config file
   --proxy=STRING                  Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)
