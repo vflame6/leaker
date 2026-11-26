@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,84 +29,75 @@ type breachDirectoryEntry struct {
 	Sources  string `json:"sources"`
 }
 
-func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
+func (s *BreachDirectory) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	target := q.Target
+	stats := newStats()
 
-	go func() {
-		defer close(results)
+	randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
+	if randomApiKey == "" {
+		return stats, nil
+	}
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-		if randomApiKey == "" {
-			return
+	// BreachDirectory supports auto-detection of input type
+	query := url.Values{}
+	query.Set("func", "auto")
+	query.Set("term", target)
+	endpoint := "https://breachdirectory.p.rapidapi.com/?" + query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return stats, err
+	}
+	req.Header.Set("x-rapidapi-key", randomApiKey)
+	req.Header.Set("x-rapidapi-host", "breachdirectory.p.rapidapi.com")
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debugf("Sending a request in BreachDirectory source for %s", target)
+	resp, err := session.Do(ctx, req)
+	if err != nil {
+		return stats, err
+	}
+	defer session.DiscardHTTPResponse(resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return stats, err
+	}
+	logger.Debugf("Response from BreachDirectory source: status code [%d], size [%d]", resp.StatusCode, len(body))
+
+	var response breachDirectoryResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return stats, err
+	}
+	stats.Total = response.Found
+
+	for _, entry := range response.Result {
+		r := Result{
+			Source:   s.Name(),
+			Email:    entry.Email,
+			Password: entry.Password,
 		}
-
-		// BreachDirectory supports auto-detection of input type
-		query := url.Values{}
-		query.Set("func", "auto")
-		query.Set("term", target)
-		endpoint := "https://breachdirectory.p.rapidapi.com/?" + query.Encode()
-
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		// Prefer hash over sha1; store sha1 in hash field if hash is empty
+		if entry.Hash != "" {
+			r.Hash = entry.Hash
+		} else if entry.Sha1 != "" {
+			r.Hash = entry.Sha1
 		}
-		req.Header.Set("x-rapidapi-key", randomApiKey)
-		req.Header.Set("x-rapidapi-host", "breachdirectory.p.rapidapi.com")
-		req.Header.Set("Accept", "application/json")
-
-		logger.Debugf("Sending a request in BreachDirectory source for %s", target)
-		resp, err := session.Do(req)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if entry.Sources != "" && entry.Sources != "Unknown" {
+			r.Database = entry.Sources
 		}
-		defer session.DiscardHTTPResponse(resp)
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if r.HasData() {
+			emit(r)
 		}
-		logger.Debugf("Response from BreachDirectory source: status code [%d], size [%d]", resp.StatusCode, len(body))
-
-		if resp.StatusCode != http.StatusOK {
-			results <- Result{
-				Source: s.Name(),
-				Error:  fmt.Errorf("BreachDirectory returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
-			}
-			return
-		}
-
-		var response breachDirectoryResponse
-		if err := json.Unmarshal(body, &response); err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-
-		for _, entry := range response.Result {
-			r := Result{
-				Source:   s.Name(),
-				Email:    entry.Email,
-				Password: entry.Password,
-			}
-			// Prefer hash over sha1; store sha1 in hash field if hash is empty
-			if entry.Hash != "" {
-				r.Hash = entry.Hash
-			} else if entry.Sha1 != "" {
-				r.Hash = entry.Sha1
-			}
-			if entry.Sources != "" && entry.Sources != "Unknown" {
-				r.Database = entry.Sources
-			}
-			if r.HasData() {
-				results <- r
-			}
-		}
-	}()
-
-	return results
+	}
+	return stats, nil
 }
+
+// Types: func=auto lets the API detect what the target is.
+func (s *BreachDirectory) Types() []ScanType { return AllTypes }
+
+// Limits: one answer holds every record.
+func (s *BreachDirectory) Limits() Limits { return Limits{} }
 
 func (s *BreachDirectory) Name() string {
 	return "breachdirectory"

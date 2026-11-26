@@ -1,0 +1,13 @@
+{"cursor": "", "hits": 2, "results": [
+  {"document_id": "1033c34c-4216-41d3-98fb-b5ef3212b61a", "source_id": 234505, "severity": 25,
+   "spycloud_publish_date": "2026-10-20T15:34:10Z", "breach_title": "Example Stealer Logs", "breach_category": "infostealer",
+   "email": "jane@example.com", "email_domain": "example.com", "email_username": "jane", "username": "jane",
+   "password": "hunter2", "password_type": "plaintext", "password_plaintext": "hunter2",
+   "target_url": "https://login.example.com/", "target_domain": "example.com",
+   "ip_addresses": ["203.0.113.10"], "user_hostname": "DESKTOP-1", "user_os": "Windows 10"},
+  {"document_id": "c9e6b730-7331-4c06-a658-87bb5d554bfd", "source_id": 152719, "severity": 20,
+   "spycloud_publish_date": "2026-04-21T00:00:00Z", "breach_title": "Example Forum", "breach_category": "exfiltrated",
+   "email": "jane@example.com", "username": "********",
+   "password": "5f4dcc3b5aa765d61d8327deb882cf99", "password_type": "md5", "password_plaintext": "password",
+   "salt": "x1", "full_name": "Jane Doe", "phone": "5552341096"}
+]}

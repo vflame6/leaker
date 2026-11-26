@@ -30,8 +30,12 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 ## Features
 
-- **15 sources** - aggregates results from multiple leak databases
-- **5 search types** - email, username, domain, keyword, phone
+- **17 sources** - aggregates results from multiple leak databases
+- **5 search types** - email, username, domain, keyword, phone; a source runs only the types its API can search
+- **Per-source summary** - after each target, a table of every source's status (ok, truncated, no key, auth, quota, ...), records fetched and kept, requests and credits; `--stats-file run.json` saves it
+- **Pagination with a credit guard** - up to `--max-results` records (default 1000) in up to `--max-requests` requests (default 3; IntelX reads 10 files) per source and target, or `--all`; a notice says when results were left behind and how to get them
+- **Parallel targets** - every source works through the target list at its own pace, up to `-t` targets at once (default 10)
+- **Retries** - 429, 502, 503 and 504 are retried with backoff, honouring `Retry-After`; redirects are never followed, so API keys never reach another host
 - **Deduplication** - removes duplicate results across sources
 - **JSONL output** - structured output for pipelines (`-j`)
 - **Rate limiting** - built-in per-source rate limits (disable with `-N`)
@@ -45,18 +49,25 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
 | [Breach House](https://breach.house/) | Yes | domain | Paid                |
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Flare](https://flare.io/)** | Yes | email, domain | ASTP licence        |
 | [Have I Been Ransomed?](https://haveibeenransom.com/) | Yes | domain | Paid                |
 | [Hudson Rock](https://hudsonrock.com/) | No* | email, username, domain | Free / Paid         |
 | [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
 | [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
 | [LeakRadar](https://leakradar.io/) | Yes | email, username, domain | Paid                |
-| [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [LeakSight](https://leaksight.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [OSINTLeak](https://app.osintleak.com/auth/signup?referral_code=FLAME6) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, phone | Paid                |
+| [LeakSight](https://leaksight.com/) | Yes | email, username, domain, phone | Paid                |
+| [OSINTLeak](https://app.osintleak.com/auth/signup?referral_code=FLAME6) | Yes | email, username, domain, phone | Paid                |
 | [ProxyNova](https://www.proxynova.com/tools/comb) | No | all | Free                |
-| [Snusbase](https://snusbase.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain, keyword, phone | Paid                |
+| [Snusbase](https://snusbase.com/) | Yes | email, username, domain | Paid                |
+| [SpyCloud](https://spycloud.com/)** | Yes | email, username, domain, phone | Enterprise licence  |
+| [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain | Paid                |
 | [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
+
+\* Hudson Rock works without a key through its free endpoints.
+\** Built from the vendor's API documentation and not yet confirmed against a live key. If you have a licence, a report of what works (or a recorded response, keys removed) is very welcome.
+
+`leaker sources` shows which keys are set, what each source can search and its limits.
 
 ## Usage
 
@@ -78,12 +89,16 @@ Flags:
                                   online (default), all, local, or explicit source names.
   --timeout=30s                   Seconds to wait on each request before timing out
   -N, --no-rate-limit             Disable rate limiting (DANGER)
+  -t, --threads=10                Targets to search at the same time
+  --max-results=1000              Records to fetch per source and target at most
+  --max-requests=3                Search requests per source and target at most, to spare API credits
+  --all                           Fetch every record up to each API's cap (lifts --max-results, and --max-requests unless given)
   -j, --json                      Output results as JSONL (one JSON object per line)
   --no-deduplication              Disable deduplication of results across sources
   --no-filter                     Disable results filtering, include every result
   -o, --output=FILE               File to write output to
   --overwrite                     Force overwrite of existing output file
-  -V, --verify                    Verify credentials using HIBP password check and hash identification
+  --stats-file=FILE               Write the per-source table of every target to FILE as JSON
   -p, --provider-config=FILE      Provider config file
   --proxy=STRING                  Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)
   -A, --user-agent=STRING         Custom user agent
@@ -96,7 +111,6 @@ Flags:
   -M, --metadata                  Include metadata fields (database) in plain output; JSON always includes them
   -D, --debug                     Enable debug mode
   --no-color                      Disable colored output
-  -L, --list-sources              List all available sources
   -C, --clear-database            Clear all cached rows from the local SQLite database (confirmation required)
 
 Commands:
@@ -105,6 +119,7 @@ Commands:
   keyword     Search by keyword.
   phone       Search by phone number.
   username    Search by username.
+  sources     List the sources with their key state, search types and limits.
   completion  Print the shell completion script.
 
   Run "leaker <command> --help" for more information on a command.

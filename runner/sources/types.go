@@ -4,14 +4,71 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
+// Query is one search: a target, its type and the limits of the run.
+type Query struct {
+	Target string
+	Type   ScanType
+	// MaxResults is the number of records to fetch at most; 0 means as many
+	// as the API returns.
+	MaxResults int
+	// MaxRequests is the number of search requests (pages) to send at most;
+	// 0 means no limit.
+	MaxRequests int
+}
+
+// Stats is what a source reports about one search.
+type Stats struct {
+	// Requests is the number of HTTP requests sent, retries included. The
+	// runner fills it from the source's session.
+	Requests int
+	// Fetched is the number of records the source emitted. The runner
+	// fills it.
+	Fetched int
+	// Total is the number of records the API says exist; -1 if unknown.
+	Total int
+	// Truncated is true when records were left behind; Limit says why.
+	Truncated bool
+	Limit     Limit
+	// CreditsLeft is the balance the API reports; nil when it reports none.
+	CreditsLeft *int
+	// CreditsUsed is what this search cost, when the API says; nil otherwise.
+	CreditsUsed *int
+	// Note details a truncation for the notice, e.g. "from 10 of 57 files".
+	Note string
+}
+
+// Limit is the cap that stopped a truncated search.
+type Limit int
+
+const (
+	LimitNone     Limit = iota
+	LimitResults        // --max-results
+	LimitRequests       // --max-requests
+	LimitAPI            // the API returns no more per search
+	LimitSafety         // MaxPagesWithoutLimit reached without --max-requests
+)
+
+// Source is one leak database. Search runs synchronously: it calls emit for
+// every record, from the goroutine that called Search, and returns what it
+// knows about the search. Errors are returned, never emitted.
 type Source interface {
-	Run(context.Context, string, ScanType, *Session) <-chan Result
+	Search(ctx context.Context, q Query, s *Session, emit func(Result)) (Stats, error)
+
+	// Types returns the scan types the API can search. The runner skips the
+	// source for any other type.
+	Types() []ScanType
+
+	// Limits returns the page size and the cap of one search.
+	Limits() Limits
 
 	// Name returns the name of the source. It is preferred to use lower case names.
 	Name() string
@@ -222,8 +279,15 @@ type CustomTransport struct {
 	UserAgent string
 }
 
+// Session is the HTTP session of a run. Every request of every source goes
+// through Do; ForSource gives each source its own rate limit and counter.
 type Session struct {
-	Client *http.Client
+	client *http.Client
+	retry  RetryPolicy
+	// pace spaces the requests of one source; nil means no wait.
+	pace *pacer
+	// sent counts the requests sent through this handle.
+	sent *atomic.Int64
 }
 
 // ScanType is the type of scan performed by the source
@@ -246,18 +310,22 @@ func (t ScanType) String() string {
 	return "unknown"
 }
 
-// ScanTypeLimiter is implemented by sources that support only some scan
-// types. Sources without it support them all.
-type ScanTypeLimiter interface {
-	SupportsScanType(ScanType) bool
-}
+// AllTypes lists every scan type, in CLI order.
+var AllTypes = []ScanType{TypeEmail, TypeUsername, TypeDomain, TypeKeyword, TypePhone}
 
 // SupportsScanType reports whether s can run a scan of type t.
 func SupportsScanType(s Source, t ScanType) bool {
-	if limiter, ok := s.(ScanTypeLimiter); ok {
-		return limiter.SupportsScanType(t)
-	}
-	return true
+	return slices.Contains(s.Types(), t)
+}
+
+// unsupportedType is the error of a source asked for a type it cannot search.
+func unsupportedType(s Source, t ScanType) error {
+	return fmt.Errorf("%s cannot run %s searches", s.Name(), t)
+}
+
+// newStats returns the stats for a search whose total is not known yet.
+func newStats() Stats {
+	return Stats{Total: -1}
 }
 
 // Types of available scans performed by the source

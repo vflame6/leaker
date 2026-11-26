@@ -1,0 +1,6 @@
+{"items": [
+  {"auth_domains": [], "domain": "example.com", "hash": "$2b$12$C6UzMDM.H6dfI/f/IKcEeO", "hash_type": "bcrypt",
+   "id": 33880703999, "identity_name": "bob@example.com", "imported_at": "2025-01-05T08:00:00+00:00",
+   "known_password_id": null, "source_id": "forum",
+   "source": {"breached_at": "2024-12-30", "id": "forum", "name": "Example Forum", "leaked_at": null}}
+], "next": null}

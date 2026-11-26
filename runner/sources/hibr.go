@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/vflame6/leaker/logger"
 )
 
 // HIBR queries Have I Been Ransomed? (haveibeenransom.com), one of the two
@@ -20,19 +18,13 @@ type HIBR struct {
 
 	// baseURL overrides the API root (tests only).
 	baseURL string
-	// noDelay disables the pause between pages (tests only).
-	noDelay bool
-	// maxPages overrides hibrMaxPages when set (tests only).
-	maxPages int
 }
 
+// Every page counts as one request against the key's quota; --max-requests
+// caps the pages of one lookup.
 const (
 	hibrBaseURL = "https://haveibeenransom.com"
 	hibrName    = "Have I Been Ransomed?"
-
-	// Every page counts as one request against the key's quota, so the number
-	// of pages fetched per lookup is capped.
-	hibrMaxPages = 5
 )
 
 // hibrCategories maps the HIBR leak_type values to the category names.
@@ -50,32 +42,28 @@ type hibrPage struct {
 	} `json:"pagination"`
 }
 
-func (s *HIBR) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	return darkEyeRun(ctx, darkEyeLookup{
+func (s *HIBR) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	return darkEyeSearch(ctx, darkEyeLookup{
 		source:        s.Name(),
 		product:       hibrName,
 		keys:          s.apiKeys,
 		keyedByDomain: true,
-		fetch: func(ctx context.Context, apiKey, domain string) ([]darkEyeRecord, error) {
-			return s.fetch(ctx, session, apiKey, domain)
+		fetch: func(ctx context.Context, q Query, apiKey, domain string) ([]darkEyeRecord, Stats, error) {
+			return s.fetch(ctx, session, q, apiKey, domain)
 		},
-	}, target, scanType)
+	}, q, emit)
 }
 
-// fetch reads up to hibrMaxPages pages of records.
-// Records read before a failure are returned together with the error.
-func (s *HIBR) fetch(ctx context.Context, session *Session, apiKey, domain string) ([]darkEyeRecord, error) {
+// fetch reads pages of records while the API has a next page, within the
+// limits of q. Records read before a failure are returned with the error.
+func (s *HIBR) fetch(ctx context.Context, session *Session, q Query, apiKey, domain string) ([]darkEyeRecord, Stats, error) {
+	p := newPager(q, s.Limits())
 	var records []darkEyeRecord
 	seen := make(map[string]struct{})
 
-	maxPages := hibrMaxPages
-	if s.maxPages > 0 {
-		maxPages = s.maxPages
-	}
-
-	for page := 1; page <= maxPages; page++ {
-		if page > 1 && !darkEyePause(ctx, s.MinInterval(), s.noDelay) {
-			return records, ctx.Err()
+	for page := 1; ; page++ {
+		if err := ctx.Err(); err != nil {
+			return records, p.stats(), err
 		}
 
 		endpoint := s.root() + "/api/metadata/domain/" + url.PathEscape(domain)
@@ -85,12 +73,12 @@ func (s *HIBR) fetch(ctx context.Context, session *Session, apiKey, domain strin
 
 		body, err := darkEyeGet(ctx, session, hibrName, endpoint, apiKey, s.apiKeys)
 		if err != nil {
-			return records, err
+			return records, p.stats(), err
 		}
 
 		var data hibrPage
 		if err := json.Unmarshal(body, &data); err != nil {
-			return records, fmt.Errorf("%s returned an invalid response", hibrName)
+			return records, p.stats(), fmt.Errorf("%s returned an invalid response", hibrName)
 		}
 
 		// The API returns "sources"; its documentation shows "results".
@@ -98,6 +86,7 @@ func (s *HIBR) fetch(ctx context.Context, session *Session, apiKey, domain strin
 		if len(raw) == 0 {
 			raw = data.Results
 		}
+		var pageRecords []darkEyeRecord
 		for _, entry := range raw {
 			var item darkEyeItem
 			if err := json.Unmarshal(entry, &item); err != nil {
@@ -119,23 +108,19 @@ func (s *HIBR) fetch(ctx context.Context, session *Session, apiKey, domain strin
 			if !known {
 				category = darkEyeClean(leakType)
 			}
-			records = append(records, darkEyeRecord{category: category, id: id, item: item})
+			pageRecords = append(pageRecords, darkEyeRecord{category: category, id: id, item: item})
 		}
+		records = append(records, pageRecords[:p.take(len(pageRecords))]...)
 
 		// A page can be short or even empty and still have a next page.
 		hasNext := data.Pagination.HasNext
 		if data.HasNext != nil {
 			hasNext = *data.HasNext
 		}
-		if !hasNext {
-			return records, nil
-		}
-		if page == maxPages {
-			logger.Debugf("HIBR source reached the page cap [%d] with more results available", maxPages)
+		if !p.next(len(pageRecords), -1, hasNext) {
+			return records, p.stats(), nil
 		}
 	}
-
-	return records, nil
 }
 
 func (s *HIBR) root() string {
@@ -145,8 +130,11 @@ func (s *HIBR) root() string {
 	return hibrBaseURL
 }
 
-// SupportsScanType reports that HIBR searches by domain only.
-func (s *HIBR) SupportsScanType(t ScanType) bool { return t == TypeDomain }
+// Types: HIBR searches by domain only.
+func (s *HIBR) Types() []ScanType { return []ScanType{TypeDomain} }
+
+// Limits: the API sets the page size and gives no total.
+func (s *HIBR) Limits() Limits { return Limits{} }
 
 func (s *HIBR) Name() string {
 	return "hibr"

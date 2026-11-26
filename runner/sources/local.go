@@ -24,14 +24,31 @@ type LocalDB struct {
 	Lookup LocalDBLookup
 }
 
-func (s *LocalDB) Run(ctx context.Context, target string, scanType ScanType, _ *Session) <-chan Result {
+// Search returns the cached records matching the target. It reads the whole
+// lookup so the database query always finishes.
+func (s *LocalDB) Search(ctx context.Context, q Query, _ *Session, emit func(Result)) (Stats, error) {
+	stats := newStats()
 	if s.Lookup == nil {
-		out := make(chan Result)
-		close(out)
-		return out
+		return stats, nil
 	}
-	return s.Lookup(ctx, target, scanType)
+	var firstErr error
+	for r := range s.Lookup(ctx, q.Target, q.Type) {
+		if r.Error != nil {
+			if firstErr == nil {
+				firstErr = r.Error
+			}
+			continue
+		}
+		emit(r)
+	}
+	return stats, firstErr
 }
+
+// Types: the local database is searched for every type.
+func (s *LocalDB) Types() []ScanType { return AllTypes }
+
+// Limits: the database returns every match.
+func (s *LocalDB) Limits() Limits { return Limits{} }
 
 func (s *LocalDB) Name() string        { return LocalSourceName }
 func (s *LocalDB) UsesKey() bool       { return false }

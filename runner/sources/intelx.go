@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vflame6/leaker/logger"
@@ -66,217 +68,214 @@ type intelxResultResponse struct {
 	Status  int                  `json:"status"` // 0=results(continue), 1=no more, 2=not found, 3=keep trying
 }
 
+// intelxMaxRecords is the most records a search returns per bucket on paid
+// keys (free keys get 200).
+const intelxMaxRecords = 1000
+
+// intelxDefaultReads is the files read per target without --max-requests.
+const intelxDefaultReads = 10
+
 // maxFileReadSize is the maximum number of bytes to read from a single file.
 // This prevents downloading very large files.
 const maxFileReadSize = 10 * 1024 * 1024 // 10 MB
 
-func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
+func (s *IntelX) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	stats := newStats()
+	key := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
+	if key.apiKey == "" {
+		return stats, nil
+	}
+	target := q.Target
+	randomApiKey := key.apiKey
+	apiURL := fmt.Sprintf("https://%s/", key.host)
+	lowerTarget := strings.ToLower(target)
 
-	go func() {
-		defer close(results)
+	// Records are files; their matching lines are the results. The search
+	// asks for as many records as results are wanted, up to the API's cap.
+	maxRecords := newPager(q, s.Limits()).limit()
+	lines := newPager(q, Limits{})
 
-		key := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-		if key.apiKey == "" {
-			return
+	// Start the search, restricted to leak/paste/darknet buckets only.
+	// Without bucket filtering, IntelX returns all indexed content including
+	// web pages that merely mention the domain, producing garbage results.
+	searchReq := intelxSearchRequest{
+		Term:       target,
+		Buckets:    intelxLeakBuckets,
+		MaxResults: maxRecords,
+		Sort:       4, // date desc
+		Media:      0, // all media types
+	}
+
+	body, err := json.Marshal(searchReq)
+	if err != nil {
+		return stats, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL+"intelligent/search", bytes.NewReader(body))
+	if err != nil {
+		return stats, err
+	}
+	req.Header.Set("x-key", randomApiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debugf("Sending search request in IntelX source for %s", target)
+	resp, err := session.Do(ctx, req)
+	if err != nil {
+		return stats, err
+	}
+	respBody, err := io.ReadAll(resp.Body)
+	session.DiscardHTTPResponse(resp)
+	if err != nil {
+		return stats, err
+	}
+
+	var searchResp intelxSearchResponse
+	if err := json.Unmarshal(respBody, &searchResp); err != nil {
+		return stats, err
+	}
+	if searchResp.Status != 0 {
+		return stats, fmt.Errorf("IntelX search failed with status %d", searchResp.Status)
+	}
+
+	searchID := searchResp.ID
+	logger.Debugf("IntelX search started with ID %s", searchID)
+	// Free the search on the server once polling is over, or on any early return.
+	terminate := sync.OnceFunc(func() { s.terminateSearch(session, apiURL, randomApiKey, searchID) })
+	defer terminate()
+
+	// Collect all records first, then fetch file contents
+	var allRecords []intelxResultRecord
+
+	// Poll for results (up to 10 attempts, pollInterval apart)
+	for attempt := 0; attempt < 10; attempt++ {
+		select {
+		case <-ctx.Done():
+			return stats, ctx.Err()
+		case <-time.After(s.pollInterval()):
 		}
-		randomApiKey := key.apiKey
-		apiURL := fmt.Sprintf("https://%s/", key.host)
-		lowerTarget := strings.ToLower(target)
 
-		// Start the search, restricted to leak/paste/darknet buckets only.
-		// Without bucket filtering, IntelX returns all indexed content including
-		// web pages that merely mention the domain, producing garbage results.
-		searchReq := intelxSearchRequest{
-			Term:       target,
-			Buckets:    intelxLeakBuckets,
-			MaxResults: 100,
-			Sort:       4, // date desc
-			Media:      0, // all media types
-		}
+		logger.Debugf("Sending a request for IntelX poll attempt %d", attempt)
 
-		body, err := json.Marshal(searchReq)
+		resultReq, err := http.NewRequestWithContext(ctx, "GET",
+			fmt.Sprintf("%sintelligent/search/result?id=%s&limit=100", apiURL, searchID), nil)
 		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+			return stats, err
 		}
+		resultReq.Header.Set("x-key", randomApiKey)
+		resultReq.Header.Set("Accept", "application/json")
 
-		req, err := http.NewRequestWithContext(ctx, "POST", apiURL+"intelligent/search", bytes.NewReader(body))
+		resultResp, err := session.Do(ctx, resultReq)
 		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+			return stats, err
 		}
-		req.Header.Set("x-key", randomApiKey)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		logger.Debugf("Sending search request in IntelX source for %s", target)
-		resp, err := session.Do(req)
+		resultBody, err := io.ReadAll(resultResp.Body)
+		session.DiscardHTTPResponse(resultResp)
 		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-		defer session.DiscardHTTPResponse(resp)
-
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+			return stats, err
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			results <- Result{
-				Source: s.Name(),
-				Error:  fmt.Errorf("IntelX search returned status %d: %s", resp.StatusCode, errorBody(respBody, randomApiKey)),
-			}
-			return
+		var resultData intelxResultResponse
+		if err := json.Unmarshal(resultBody, &resultData); err != nil {
+			return stats, err
 		}
 
-		var searchResp intelxSearchResponse
-		if err := json.Unmarshal(respBody, &searchResp); err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		logger.Debugf("IntelX poll attempt %d: status=%d, records=%d", attempt, resultData.Status, len(resultData.Records))
+
+		allRecords = append(allRecords, resultData.Records...)
+
+		// Status: 0=continue, 1=done, 2=not found, 3=keep trying
+		if resultData.Status == 1 || resultData.Status == 2 {
+			break
 		}
+	}
 
-		if searchResp.Status != 0 {
-			results <- Result{
-				Source: s.Name(),
-				Error:  fmt.Errorf("IntelX search failed with status %d", searchResp.Status),
-			}
-			return
+	terminate()
+	logger.Debugf("IntelX found %d records, fetching file contents", len(allRecords))
+
+	// Sort records by access level (public first) so we prefer readable files
+	sort.Slice(allRecords, func(i, j int) bool {
+		return allRecords[i].AccessLevel < allRecords[j].AccessLevel
+	})
+
+	// Deduplicate records by StorageID (same file can appear with different part markers)
+	seen := make(map[string]struct{})
+	var uniqueRecords []intelxResultRecord
+	for _, record := range allRecords {
+		if _, ok := seen[record.StorageID]; ok {
+			continue
 		}
+		seen[record.StorageID] = struct{}{}
+		uniqueRecords = append(uniqueRecords, record)
+	}
 
-		searchID := searchResp.ID
-		logger.Debugf("IntelX search started with ID %s", searchID)
-
-		// Collect all records first, then fetch file contents
-		var allRecords []intelxResultRecord
-
-		// Poll for results (up to 10 attempts with 2s delay)
-		for attempt := 0; attempt < 10; attempt++ {
-			select {
-			case <-ctx.Done():
-				s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
-				return
-			case <-time.After(s.pollInterval()):
-			}
-
-			logger.Debugf("Sending a request for IntelX poll attempt %d", attempt)
-
-			resultReq, err := http.NewRequestWithContext(ctx, "GET",
-				fmt.Sprintf("%sintelligent/search/result?id=%s&limit=100", apiURL, searchID), nil)
-			if err != nil {
-				results <- Result{Source: s.Name(), Error: err}
-				return
-			}
-			resultReq.Header.Set("x-key", randomApiKey)
-			resultReq.Header.Set("Accept", "application/json")
-
-			resultResp, err := session.Do(resultReq)
-			if err != nil {
-				results <- Result{Source: s.Name(), Error: err}
-				return
-			}
-
-			resultBody, err := io.ReadAll(resultResp.Body)
-			session.DiscardHTTPResponse(resultResp)
-			if err != nil {
-				results <- Result{Source: s.Name(), Error: err}
-				return
-			}
-
-			var resultData intelxResultResponse
-			if err := json.Unmarshal(resultBody, &resultData); err != nil {
-				results <- Result{Source: s.Name(), Error: err}
-				return
-			}
-
-			logger.Debugf("IntelX poll attempt %d: status=%d, records=%d", attempt, resultData.Status, len(resultData.Records))
-
-			allRecords = append(allRecords, resultData.Records...)
-
-			// Status: 0=continue, 1=done, 2=not found, 3=keep trying
-			if resultData.Status == 1 || resultData.Status == 2 {
-				break
-			}
-			if resultData.Status == 0 {
-				continue
-			}
-			// Status 3: no results yet, keep trying
+	// Filter out records from non-leak buckets as a safety net.
+	// Even with bucket filtering in the search request, this guards against
+	// unexpected results (e.g. if the API ignores unknown bucket names).
+	var filteredRecords []intelxResultRecord
+	for _, record := range uniqueRecords {
+		if isIntelxWebBucket(record.Bucket) {
+			logger.Debugf("IntelX skipping record %s from web bucket %q", record.Name, record.Bucket)
+			continue
 		}
+		filteredRecords = append(filteredRecords, record)
+	}
 
-		// Terminate search to free resources
-		s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
+	logger.Debugf("IntelX %d records after bucket filtering (was %d)", len(filteredRecords), len(uniqueRecords))
 
-		logger.Debugf("IntelX found %d records, fetching file contents", len(allRecords))
-
-		// Sort records by access level (public first) so we prefer readable files
-		sort.Slice(allRecords, func(i, j int) bool {
-			return allRecords[i].AccessLevel < allRecords[j].AccessLevel
-		})
-
-		// Deduplicate records by StorageID (same file can appear with different part markers)
-		seen := make(map[string]struct{})
-		var uniqueRecords []intelxResultRecord
-		for _, record := range allRecords {
-			if _, ok := seen[record.StorageID]; ok {
-				continue
-			}
-			seen[record.StorageID] = struct{}{}
-			uniqueRecords = append(uniqueRecords, record)
+	// For each filtered record, fetch file contents and extract matching
+	// lines. Every read costs a read credit, so --max-requests caps the
+	// reads. A 402 means the read budget is spent: stop reading.
+	reads := 0
+	for _, record := range filteredRecords {
+		if err := ctx.Err(); err != nil {
+			return lines.stats(), err
 		}
-
-		// Filter out records from non-leak buckets as a safety net.
-		// Even with bucket filtering in the search request, this guards against
-		// unexpected results (e.g. if the API ignores unknown bucket names).
-		var filteredRecords []intelxResultRecord
-		for _, record := range uniqueRecords {
-			if isIntelxWebBucket(record.Bucket) {
-				logger.Debugf("IntelX skipping record %s from web bucket %q", record.Name, record.Bucket)
-				continue
-			}
-			filteredRecords = append(filteredRecords, record)
+		if lines.want() == 0 {
+			return intelxTruncated(lines, LimitResults, reads, len(filteredRecords)), nil
 		}
-
-		logger.Debugf("IntelX %d records after bucket filtering (was %d)", len(filteredRecords), len(uniqueRecords))
-
-		// For each filtered record, fetch file contents and extract matching lines.
-		// Stop fetching if we hit a rate limit (402) — the API budget is exhausted.
-		rateLimited := false
-		for _, record := range filteredRecords {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			if rateLimited {
-				break
-			}
-
-			lines, status, readErr := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
-			if status == http.StatusPaymentRequired {
-				rateLimited = true
-				results <- Result{
-					Source: s.Name(),
-					Error:  fmt.Errorf("IntelX file read rate limited (%d), stopping further reads", status),
-				}
-				continue
-			}
-			for _, line := range lines {
-				r := parseIntelxLine(line, lowerTarget)
-				r.Source = s.Name()
-				if r.HasData() {
-					results <- r
-				}
-			}
-			if readErr != nil && ctx.Err() == nil {
-				results <- Result{Source: s.Name(), Error: readErr}
+		if q.MaxRequests > 0 && reads >= q.MaxRequests {
+			return intelxTruncated(lines, LimitRequests, reads, len(filteredRecords)), nil
+		}
+		matches, status, readErr := s.fetchMatchingLines(ctx, session, apiURL, randomApiKey, record, lowerTarget)
+		reads++
+		if status == http.StatusPaymentRequired {
+			return lines.stats(), withMessage(ErrQuota, "IntelX file read quota exhausted (status 402); stopped reading files")
+		}
+		var results []Result
+		for _, line := range matches {
+			r := parseIntelxLine(line, lowerTarget)
+			r.Source = s.Name()
+			if r.HasData() {
+				results = append(results, r)
 			}
 		}
-	}()
+		for _, r := range results[:lines.take(len(results))] {
+			emit(r)
+		}
+		if readErr != nil && ctx.Err() == nil {
+			// One unreadable file does not fail the search.
+			logger.Warnf("IntelX: %s", readErr)
+		}
+	}
+	// As many records as asked for: the search may have had more.
+	if len(allRecords) >= maxRecords {
+		reason := LimitResults
+		if maxRecords == intelxMaxRecords {
+			reason = LimitAPI
+		}
+		return intelxTruncated(lines, reason, reads, len(filteredRecords)), nil
+	}
+	return lines.stats(), nil
+}
 
-	return results
+// intelxTruncated returns the stats of a search that left records unread,
+// with how many of the files were read.
+func intelxTruncated(lines *pager, reason Limit, read, files int) Stats {
+	stats := lines.stats()
+	stats.Truncated, stats.Limit = true, reason
+	stats.Note = fmt.Sprintf("from %d of %d files", read, files)
+	return stats
 }
 
 // parseIntelxLine parses a raw leak line from IntelX files.
@@ -495,17 +494,17 @@ func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiUR
 	req.URL.RawQuery = q.Encode()
 	req.Header.Set("x-key", apiKey)
 
-	resp, err := session.Do(req)
+	resp, err := session.Do(ctx, req)
 	if err != nil {
+		var statusErr *StatusError
+		if errors.As(err, &statusErr) {
+			logger.Debugf("IntelX file read returned status %d for %s", statusErr.StatusCode, record.Name)
+			return nil, statusErr.StatusCode, nil
+		}
 		logger.Debugf("IntelX file read error for %s: %v", record.Name, err)
 		return nil, 0, fmt.Errorf("IntelX file read request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("IntelX file read returned status %d for %s", resp.StatusCode, record.Name)
-		return nil, resp.StatusCode, nil
-	}
 
 	// Read one byte past the cap to distinguish a complete file from a truncated
 	// one, then close the response without draining any remaining content.
@@ -547,7 +546,9 @@ func isIntelxWebBucket(bucket string) bool {
 		strings.HasPrefix(bucket, "whois.")
 }
 
-func (s *IntelX) terminateSearch(ctx context.Context, session *Session, apiURL, apiKey, searchID string) {
+// terminateSearch frees a search on the server. It runs on its own short
+// context, so it still runs when the search was interrupted.
+func (s *IntelX) terminateSearch(session *Session, apiURL, apiKey, searchID string) {
 	terminateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -558,12 +559,18 @@ func (s *IntelX) terminateSearch(ctx context.Context, session *Session, apiURL, 
 	}
 	req.Header.Set("x-key", apiKey)
 
-	resp, err := session.Do(req)
+	resp, err := session.Do(terminateCtx, req)
 	if err != nil {
 		return
 	}
-	_ = ctx
 	session.DiscardHTTPResponse(resp)
+}
+
+// Limits: result pages of 100 records; up to 1,000 records per bucket on
+// paid keys (200 on free ones). Every file read is a request: without
+// --max-requests, IntelX reads up to intelxDefaultReads files per target.
+func (s *IntelX) Limits() Limits {
+	return Limits{PageSize: 100, MaxResults: intelxMaxRecords, DefaultRequests: intelxDefaultReads}
 }
 
 func (s *IntelX) Name() string {
@@ -593,6 +600,9 @@ func (s *IntelX) AddApiKeys(keys []string) {
 		})
 	}
 }
+
+// Types: IntelX searches free text, so every type is searched as text.
+func (s *IntelX) Types() []ScanType { return AllTypes }
 
 // HasKeys reports whether a usable API key is configured.
 func (s *IntelX) HasKeys() bool {

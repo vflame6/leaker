@@ -23,75 +23,39 @@ type ProxyNovaResponse struct {
 type ProxyNova struct {
 }
 
-// Run function returns all results found with the service.
-// ProxyNova does not filter by target type, so result filtering is applied downstream.
-func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
-
-	go func() {
-		defer close(results)
-
-		// Fetch the first page to learn the total count
-		// scanType is ignored because ProxyNova does not support scan types
-		firstPage, err := s.fetchPage(ctx, target, 0, session)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+// Search returns every result ProxyNova finds. ProxyNova has no search
+// types, so the runner's result filter applies.
+func (s *ProxyNova) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	p := newPager(q, s.Limits())
+	page, err := s.fetchPage(ctx, q.Target, 0, p.size(), session)
+	if err != nil {
+		return p.stats(), err
+	}
+	for _, line := range page.Lines[:p.take(len(page.Lines))] {
+		r := Result{Source: s.Name()}
+		// ProxyNova returns lines in "email:password" format
+		if idx := strings.Index(line, ":"); idx > 0 {
+			r.Email = line[:idx]
+			r.Password = line[idx+1:]
+		} else {
+			r.Email = line
 		}
-
-		for _, line := range firstPage.Lines {
-			r := Result{Source: s.Name()}
-			// ProxyNova returns lines in "email:password" format
-			if idx := strings.Index(line, ":"); idx > 0 {
-				r.Email = line[:idx]
-				r.Password = line[idx+1:]
-			} else {
-				r.Email = line
-			}
-			if r.HasData() {
-				results <- r
-			}
+		if r.HasData() {
+			emit(r)
 		}
-
-		// Paginate if there are more results than the first page returned
-		// COMMENTED OUT because proxynova does not allow to probe for other pages. Only first one is available for now.
-		// Current proxynova response:
-		//{
-		//	"error": "You are limited to 100 results"
-		//}
-		// if firstPage.Count > len(firstPage.Lines) {
-		//	logger.Debugf("ProxyNova: %d total results for %s, paginating", firstPage.Count, target)
-		//	start := len(firstPage.Lines)
-		//	for start < firstPage.Count {
-		//		if ctx.Err() != nil {
-		//			return
-		//		}
-		//		page, err := s.fetchPage(ctx, target, start, session)
-		//		if err != nil {
-		//			results <- Result{Source: s.Name(), Error: err}
-		//			return
-		//		}
-		//		if len(page.Lines) == 0 {
-		//			// no more results despite count suggesting otherwise
-		//			break
-		//		}
-		//		for _, line := range page.Lines {
-		//			results <- Result{Source: s.Name(), Value: line}
-		//		}
-		//		start += len(page.Lines)
-		//	}
-		//}
-	}()
-
-	return results
+	}
+	// ProxyNova serves the first 100 results only and refuses other pages
+	// ("You are limited to 100 results").
+	p.next(len(page.Lines), page.Count, false)
+	return p.stats(), nil
 }
 
-// fetchPage retrieves one page of results from ProxyNova starting at offset start.
-func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, session *Session) (*ProxyNovaResponse, error) {
+// fetchPage retrieves limit results from ProxyNova starting at offset start.
+func (s *ProxyNova) fetchPage(ctx context.Context, target string, start, limit int, session *Session) (*ProxyNovaResponse, error) {
 	query := url.Values{}
 	query.Set("query", target)
 	query.Set("start", strconv.Itoa(start))
-	query.Set("limit", "100")
+	query.Set("limit", strconv.Itoa(limit))
 	endpoint := "https://api.proxynova.com/comb?" + query.Encode()
 	logger.Debugf("Sending a request in ProxyNova source for %s (start=%d)", target, start)
 
@@ -99,7 +63,7 @@ func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, ses
 	if err != nil {
 		return nil, err
 	}
-	resp, err := session.Do(req)
+	resp, err := session.Do(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -113,22 +77,19 @@ func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, ses
 
 	var response ProxyNovaResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, errorBody(body))
-		}
 		return nil, fmt.Errorf("failed to parse ProxyNova response: %s", errorBody(body))
 	}
 	if response.Error != "" {
-		return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, response.Error)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, errorBody(body))
+		return nil, fmt.Errorf("ProxyNova refused the query: %s", errorBody([]byte(response.Error)))
 	}
 
 	return &response, nil
 }
 
 // Name returns the name of the source
+// Limits: ProxyNova serves the first 100 results only.
+func (s *ProxyNova) Limits() Limits { return Limits{PageSize: 100, MaxResults: 100} }
+
 func (s *ProxyNova) Name() string {
 	return "proxynova"
 }
@@ -144,6 +105,9 @@ func (s *ProxyNova) NeedsKey() bool {
 func (s *ProxyNova) AddApiKeys(_ []string) {
 	// no key needed
 }
+
+// Types: ProxyNova searches free text, so every type is searched as text.
+func (s *ProxyNova) Types() []ScanType { return AllTypes }
 
 // HasKeys reports whether a usable API key is configured.
 func (s *ProxyNova) HasKeys() bool {

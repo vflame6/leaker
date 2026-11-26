@@ -89,72 +89,41 @@ type darkEyeLookup struct {
 	// keyedByDomain is true when the API is keyed by domain, so every record
 	// belongs to the searched domain even without a website of its own.
 	keyedByDomain bool
-	fetch         func(ctx context.Context, apiKey, domain string) ([]darkEyeRecord, error)
+	// fetch reads the records of domain within the limits of q; its Stats
+	// say whether a cap left records behind.
+	fetch func(ctx context.Context, q Query, apiKey, domain string) ([]darkEyeRecord, Stats, error)
 }
 
-// darkEyeRun runs one DarkEye lookup. Records read before a failure are still
-// returned, followed by the failure as an error result.
-func darkEyeRun(ctx context.Context, l darkEyeLookup, target string, scanType ScanType) <-chan Result {
-	results := make(chan Result)
-
-	go func() {
-		defer close(results)
-
-		// DarkEye sources are searched by domain only.
-		if scanType != TypeDomain {
-			return
-		}
-
-		apiKey := utils.PickRandom(l.keys, l.source, true)
-		if apiKey == "" {
-			return
-		}
-
-		domain, ok := normalizeDarkEyeDomain(target)
-		if !ok {
-			send(ctx, results, Result{Source: l.source, Error: fmt.Errorf("%s needs a plain domain name, got %q", l.product, target)})
-			return
-		}
-
-		records, err := l.fetch(ctx, apiKey, domain)
-		for _, record := range records {
-			r, ok := darkEyeRecordToResult(l.source, l.keyedByDomain, record, domain)
-			if !ok {
-				continue
-			}
-			if !send(ctx, results, r) {
-				return
-			}
-		}
-		if err != nil && ctx.Err() == nil {
-			send(ctx, results, Result{Source: l.source, Error: err})
-		}
-	}()
-
-	return results
-}
-
-// send delivers a result unless the context is cancelled first.
-func send(ctx context.Context, results chan<- Result, r Result) bool {
-	select {
-	case results <- r:
-		return true
-	case <-ctx.Done():
-		return false
+// darkEyeSearch runs one DarkEye lookup. Records read before a failure are
+// still emitted; the failure is returned.
+func darkEyeSearch(ctx context.Context, l darkEyeLookup, q Query, emit func(Result)) (Stats, error) {
+	stats := newStats()
+	// DarkEye sources are searched by domain only.
+	if q.Type != TypeDomain {
+		return stats, fmt.Errorf("%s searches domains only", l.product)
 	}
-}
 
-// darkEyePause waits between two requests to respect the rate limit.
-func darkEyePause(ctx context.Context, interval time.Duration, noDelay bool) bool {
-	if noDelay {
-		return ctx.Err() == nil
+	apiKey := utils.PickRandom(l.keys, l.source, true)
+	if apiKey == "" {
+		return stats, nil
 	}
-	select {
-	case <-ctx.Done():
-		return false
-	case <-time.After(interval):
-		return true
+
+	domain, ok := normalizeDarkEyeDomain(q.Target)
+	if !ok {
+		return stats, fmt.Errorf("%s needs a plain domain name, got %q", l.product, q.Target)
 	}
+
+	records, fetched, err := l.fetch(ctx, q, apiKey, domain)
+	stats.Total, stats.Truncated, stats.Limit = fetched.Total, fetched.Truncated, fetched.Limit
+	for _, record := range records {
+		if r, ok := darkEyeRecordToResult(l.source, l.keyedByDomain, record, domain); ok {
+			emit(r)
+		}
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return stats, ctxErr
+	}
+	return stats, err
 }
 
 // darkEyeRedact removes every configured API key from a message.
@@ -176,10 +145,14 @@ func darkEyeGet(ctx context.Context, session *Session, product, endpoint, apiKey
 	req.Header.Set("Accept", "application/json")
 
 	logger.Debugf("Sending a request to %s", product)
-	resp, err := session.Do(req)
+	resp, err := session.Do(ctx, req)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
+		}
+		var statusErr *StatusError
+		if errors.As(err, &statusErr) {
+			return nil, withMessage(statusErr, darkEyeStatusMessage(product, statusErr.StatusCode))
 		}
 		return nil, fmt.Errorf("%s request failed: %s", product, darkEyeRedact(err.Error(), keys))
 	}
@@ -198,17 +171,20 @@ func darkEyeGet(ctx context.Context, session *Session, product, endpoint, apiKey
 		return nil, fmt.Errorf("%s response exceeded the %d-byte limit", product, darkEyeMaxBodySize)
 	}
 	logger.Debugf("Response from %s: status code [%d], size [%d]", product, resp.StatusCode, len(body))
+	return body, nil
+}
 
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return body, nil
+// darkEyeStatusMessage describes a failed answer without quoting it.
+func darkEyeStatusMessage(product string, status int) string {
+	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, fmt.Errorf("%s authentication failed (status %d), check its API key", product, resp.StatusCode)
+		return fmt.Sprintf("%s authentication failed (status %d), check its API key", product, status)
+	case http.StatusPaymentRequired:
+		return fmt.Sprintf("%s quota exhausted (status %d)", product, status)
 	case http.StatusTooManyRequests:
-		return nil, fmt.Errorf("%s quota or rate limit reached (status %d), retry later", product, resp.StatusCode)
-	default:
-		return nil, fmt.Errorf("%s returned status %d", product, resp.StatusCode)
+		return fmt.Sprintf("%s quota or rate limit reached (status %d), retry later", product, status)
 	}
+	return fmt.Sprintf("%s returned status %d", product, status)
 }
 
 // darkEyeRecordToResult maps a record to a Result that carries listing metadata only.

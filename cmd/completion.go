@@ -398,25 +398,64 @@ function __leaker_sources
 	for _, s := range m.sources {
 		b.WriteString(" " + fishQuote(s))
 	}
-	b.WriteString("\nend\n\ncomplete -c leaker -f\n")
+	b.WriteString("\nend\n")
 
+	// __fish_seen_subcommand_from would take the value of a flag, as in
+	// "leaker -o email", for the command.
+	var valueFlags []string
+	for _, f := range m.flags {
+		if f.takesValue {
+			valueFlags = append(valueFlags, f.forms()...)
+		}
+	}
 	names := strings.Join(m.commandNames(), " ")
+	b.WriteString(`
+# __leaker_command prints the command on the command line, skipping the
+# values of flags that take one.
+function __leaker_command
+    # -x is fish 4's name for -o.
+    set -l tokens (commandline -xpc 2>/dev/null; or commandline -opc)
+    set -e tokens[1]
+    while set -q tokens[1]
+        switch $tokens[1]
+`)
+	if len(valueFlags) > 0 {
+		b.WriteString("            case " + strings.Join(valueFlags, " ") + "\n                set -e tokens[1]\n")
+	}
+	b.WriteString("            case " + names + `
+                echo $tokens[1]
+                return 0
+        end
+        set -e tokens[1]
+    end
+    return 1
+end
+
+# __leaker_using_command NAME... succeeds when the command is one of NAME.
+function __leaker_using_command
+    set -l command (__leaker_command); or return 1
+    contains -- $command $argv
+end
+
+complete -c leaker -f
+`)
+
 	var fileCommands []string
 	for _, c := range m.commands {
 		fmt.Fprintf(&b, "complete -c leaker -n %s -a %s -d %s\n",
-			fishQuote("not __fish_seen_subcommand_from "+names), c.name, fishQuote(c.help))
+			fishQuote("not __leaker_command"), c.name, fishQuote(c.help))
 	}
 	for _, c := range m.commands {
 		switch {
 		case len(c.argEnum) > 0:
 			fmt.Fprintf(&b, "complete -c leaker -n %s -a %s\n",
-				fishQuote("__fish_seen_subcommand_from "+c.name), fishQuote(strings.Join(c.argEnum, " ")))
+				fishQuote("__leaker_using_command "+c.name), fishQuote(strings.Join(c.argEnum, " ")))
 		case c.argFile:
 			fileCommands = append(fileCommands, c.name)
 		}
 	}
 	if len(fileCommands) > 0 {
-		fmt.Fprintf(&b, "complete -c leaker -n %s -F\n", fishQuote("__fish_seen_subcommand_from "+strings.Join(fileCommands, " ")))
+		fmt.Fprintf(&b, "complete -c leaker -n %s -F\n", fishQuote("__leaker_using_command "+strings.Join(fileCommands, " ")))
 	}
 
 	for _, f := range m.flags {

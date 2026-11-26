@@ -37,7 +37,7 @@ func TestSessionDo_RedactsKeyOnTransportError(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet,
 		"https://api.leaksight.com/osint/username?token=SECRET_LEAKSIGHT_TOKEN_456&text=jane", nil)
 
-	_, err = session.Do(req)
+	_, err = session.Do(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -72,7 +72,7 @@ func TestNewSession_ProxyFlagRoutesRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.proxynova.com/comb", nil)
-	if _, err := session.Do(req); err == nil {
+	if _, err := session.Do(context.Background(), req); err == nil {
 		t.Error("the fake proxy refuses requests, expected an error")
 	}
 	if got := proxy.Hosts(); len(got) != 1 || got[0] != "api.proxynova.com" {
@@ -85,9 +85,9 @@ func TestNewSession_DefaultsToEnvironmentProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	custom, ok := session.Client.Transport.(*CustomTransport)
+	custom, ok := session.client.Transport.(*CustomTransport)
 	if !ok {
-		t.Fatalf("transport is %T, want *CustomTransport", session.Client.Transport)
+		t.Fatalf("transport is %T, want *CustomTransport", session.client.Transport)
 	}
 	tr, ok := custom.Transport.(*http.Transport)
 	if !ok {
@@ -136,5 +136,19 @@ func TestHasKeys(t *testing.T) {
 	ix.AddApiKeys([]string{"free.intelx.io:uuid-2"})
 	if len(ix.apiKeys) != 1 {
 		t.Errorf("AddApiKeys should replace keys, have %d", len(ix.apiKeys))
+	}
+}
+
+// TestNewSession_IdleConnectionsTimeOut: connections are kept alive, so idle
+// ones are closed after 90s, like Go's default transport, before a server
+// does it under a request.
+func TestNewSession_IdleConnectionsTimeOut(t *testing.T) {
+	session, err := NewSession(SessionOptions{Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := session.client.Transport.(*CustomTransport).Transport.(*http.Transport)
+	if tr.IdleConnTimeout != 90*time.Second {
+		t.Errorf("IdleConnTimeout = %v, want 90s", tr.IdleConnTimeout)
 	}
 }

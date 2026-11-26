@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,152 +24,116 @@ type hudsonRockPaidResponse struct {
 	Data []map[string]interface{} `json:"data"`
 }
 
-func (s *HudsonRock) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
-
-	go func() {
-		defer close(results)
-
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-
-		if randomApiKey == "" {
-			// Use free OSINT endpoints
-			s.runFree(ctx, target, scanType, session, results)
-		} else {
-			// Use paid Cavalier v3 API
-			s.runPaid(ctx, target, scanType, session, results, randomApiKey)
-		}
-	}()
-
-	return results
+func (s *HudsonRock) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	if !SupportsScanType(s, q.Type) {
+		return newStats(), unsupportedType(s, q.Type)
+	}
+	if apiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey()); apiKey != "" {
+		// Paid Cavalier v3 API
+		return s.searchPaid(ctx, q, session, emit, apiKey)
+	}
+	// Free OSINT endpoints
+	return s.searchFree(ctx, q, session, emit)
 }
 
-func (s *HudsonRock) runFree(ctx context.Context, target string, scanType ScanType, session *Session, results chan<- Result) {
+func (s *HudsonRock) searchFree(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
 	const baseURL = "https://cavalier.hudsonrock.com/api/json/v2/osint-tools/"
+	stats := newStats()
 
 	query := url.Values{}
 	var endpoint string
-	switch scanType {
+	switch q.Type {
 	case TypeEmail:
-		query.Set("email", target)
+		query.Set("email", q.Target)
 		endpoint = baseURL + "search-by-email?" + query.Encode()
 	case TypeDomain:
-		query.Set("domain", target)
+		query.Set("domain", q.Target)
 		endpoint = baseURL + "search-by-domain?" + query.Encode()
 	default:
-		// Username, keyword, phone — all fall back to username search
-		query.Set("username", target)
+		query.Set("username", q.Target)
 		endpoint = baseURL + "search-by-username?" + query.Encode()
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	req.Header.Set("Accept", "application/json")
 
-	logger.Debugf("Sending a request in HudsonRock (free) source for %s", target)
-	resp, err := session.Do(req)
+	logger.Debugf("Sending a request in HudsonRock (free) source for %s", q.Target)
+	resp, err := session.Do(ctx, req)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	defer session.DiscardHTTPResponse(resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	logger.Debugf("Response from HudsonRock (free) source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
-	if resp.StatusCode != http.StatusOK {
-		results <- Result{
-			Source: s.Name(),
-			Error:  fmt.Errorf("HudsonRock returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
-		}
-		return
-	}
-
 	var response hudsonRockFreeResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
-
 	for _, stealer := range response.Stealers {
-		r := s.recordToResult(stealer)
-		if r.HasData() {
-			results <- r
+		if r := s.recordToResult(stealer); r.HasData() {
+			emit(r)
 		}
 	}
+	return stats, nil
 }
 
-func (s *HudsonRock) runPaid(ctx context.Context, target string, scanType ScanType, session *Session, results chan<- Result, apiKey string) {
+func (s *HudsonRock) searchPaid(ctx context.Context, q Query, session *Session, emit func(Result), apiKey string) (Stats, error) {
 	const baseURL = "https://api.hudsonrock.com/json/v3/search-by-domain"
+	stats := newStats()
 
 	var searchType string
-	switch scanType {
+	switch q.Type {
 	case TypeEmail:
 		searchType = "email"
-	case TypeUsername:
-		searchType = "username"
 	case TypeDomain:
 		searchType = "domain"
 	default:
-		// Keyword, phone — fall back to username search
 		searchType = "username"
 	}
 
 	query := url.Values{}
 	query.Set("type", searchType)
-	query.Set("query", target)
+	query.Set("query", q.Target)
 	endpoint := baseURL + "?" + query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	req.Header.Set("api-key", apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	logger.Debugf("Sending a request in HudsonRock (paid) source for %s", target)
-	resp, err := session.Do(req)
+	logger.Debugf("Sending a request in HudsonRock (paid) source for %s", q.Target)
+	resp, err := session.Do(ctx, req)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	defer session.DiscardHTTPResponse(resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
 	logger.Debugf("Response from HudsonRock (paid) source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
-	if resp.StatusCode != http.StatusOK {
-		results <- Result{
-			Source: s.Name(),
-			Error:  fmt.Errorf("HudsonRock paid API returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
-		}
-		return
-	}
-
 	var response hudsonRockPaidResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		results <- Result{Source: s.Name(), Error: err}
-		return
+		return stats, err
 	}
-
 	for _, record := range response.Data {
-		r := s.recordToResult(record)
-		if r.HasData() {
-			results <- r
+		if r := s.recordToResult(record); r.HasData() {
+			emit(r)
 		}
 	}
+	return stats, nil
 }
 
 func (s *HudsonRock) recordToResult(record map[string]interface{}) Result {
@@ -205,6 +168,9 @@ func (s *HudsonRock) recordToResult(record map[string]interface{}) Result {
 	return r
 }
 
+// Limits: one answer holds every record.
+func (s *HudsonRock) Limits() Limits { return Limits{} }
+
 func (s *HudsonRock) Name() string {
 	return "hudsonrock"
 }
@@ -221,6 +187,9 @@ func (s *HudsonRock) NeedsKey() bool {
 func (s *HudsonRock) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
+
+// Types: Hudson Rock has no keyword or phone search.
+func (s *HudsonRock) Types() []ScanType { return []ScanType{TypeEmail, TypeUsername, TypeDomain} }
 
 // HasKeys reports whether a usable API key is configured.
 func (s *HudsonRock) HasKeys() bool {

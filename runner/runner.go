@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Runner struct {
@@ -22,6 +22,14 @@ type Runner struct {
 	available []sources.Source
 	// scanSources are the selected sources that can run.
 	scanSources []sources.Source
+	// selected names every selected source, in source order, for the rows
+	// of the per-target table; skipped gives the status of those that
+	// cannot run (no key, unsupported).
+	selected []string
+	skipped  map[string]string
+	// run collects the per-target tables for --stats-file; nil without it.
+	run     *RunSummary
+	statsMu sync.Mutex
 	// providerConfig is the provider config file in use.
 	providerConfig string
 	// leakerDB is the local SQLite cache handle. May be nil when writes
@@ -29,11 +37,12 @@ type Runner struct {
 	leakerDB *LeakerDB
 	// dbNotice tells the user, once per run, where results are stored.
 	dbNotice sync.Once
-	// session is the HTTP session shared by every source and the verifier
-	// for the whole run.
+	// session is the HTTP session shared by every source for the whole run.
 	session *sources.Session
-	// verifier enriches results when -V is given; one per run.
-	verifier *Verifier
+	// sourceSessions holds each source's handle on session (its rate limit
+	// and request count), by source name; see sessionFor.
+	sourceSessions map[string]*sources.Session
+	sessionsMu     sync.Mutex
 }
 
 // Close releases resources held by the runner (currently just the local
@@ -89,8 +98,8 @@ func NewRunner(options *Options) (*Runner, error) {
 		options.UserAgent = fmt.Sprintf("leaker/%s", options.Version)
 	}
 
-	// One session for the whole run: every source and the verifier share
-	// its proxy and TLS settings. Without --proxy, HTTP(S)_PROXY apply.
+	// One session for the whole run: every source shares its proxy and TLS
+	// settings. Without --proxy, HTTP(S)_PROXY apply.
 	session, err := sources.NewSession(sources.SessionOptions{
 		Timeout:   options.Timeout,
 		UserAgent: options.UserAgent,
@@ -102,7 +111,6 @@ func NewRunner(options *Options) (*Runner, error) {
 		return nil, &ConfigError{Err: err}
 	}
 	r.session = session
-	r.verifier = NewVerifier(options.Verify, session)
 
 	// Open the local DB cache. In writable mode, the file is created if
 	// missing; in read-only mode, a missing file yields a nil handle
@@ -214,17 +222,23 @@ func (r *Runner) configureSources() error {
 	scanType := r.options.Type
 	var runnable, noKey, unsupported []sources.Source
 	var missing, wrongType []string
+	r.selected = r.selected[:0]
+	r.skipped = make(map[string]string)
 	for _, source := range selected {
+		r.selected = append(r.selected, source.Name())
 		switch {
 		case source.NeedsKey() && !source.HasKeys():
 			noKey = append(noKey, source)
+			r.skipped[source.Name()] = StatusNoKey
 			if explicit[source.Name()] {
 				missing = append(missing, source.Name())
 			}
 		case !sources.SupportsScanType(source, scanType):
 			unsupported = append(unsupported, source)
+			r.skipped[source.Name()] = StatusUnsupported
 			if explicit[source.Name()] {
-				wrongType = append(wrongType, source.Name())
+				wrongType = append(wrongType, fmt.Sprintf("%s cannot run %s searches (it searches %s)",
+					source.Name(), scanType, typeNames(source.Types(), ", ")))
 			}
 		default:
 			runnable = append(runnable, source)
@@ -236,8 +250,7 @@ func (r *Runner) configureSources() error {
 			strings.Join(missing, ", "), r.providerConfig, plural(len(missing), "it", "them"))
 	}
 	if len(wrongType) > 0 {
-		return configErrorf("%s cannot run %s searches (domain searches only): remove %s from -s",
-			strings.Join(wrongType, ", "), scanType, plural(len(wrongType), "it", "them"))
+		return configErrorf("%s: remove %s from -s", strings.Join(wrongType, "; "), plural(len(wrongType), "it", "them"))
 	}
 	if len(runnable) == 0 {
 		return configErrorf("no selected source can run a %s search; add keys to %s", scanType, r.providerConfig)
@@ -262,6 +275,15 @@ func (r *Runner) configureSources() error {
 	logger.Debugf("Configuring leaker to use sources: %s", strings.Join(active, ", "))
 	r.scanSources = runnable
 	return nil
+}
+
+// typeNames joins the names of types with sep.
+func typeNames(types []sources.ScanType, sep string) string {
+	names := make([]string, 0, len(types))
+	for _, t := range types {
+		names = append(names, t.String())
+	}
+	return strings.Join(names, sep)
 }
 
 func sourceNames(list []sources.Source) string {
@@ -294,6 +316,12 @@ func (r *Runner) RunEnumeration(ctx context.Context) error {
 	// configure output
 	outputs := []io.Writer{r.options.Output}
 
+	// Refuse an existing stats file before creating any file.
+	statsFile := r.options.StatsFile
+	if statsFile != "" && !r.options.Overwrite && utils.FileExists(statsFile) {
+		return configErrorf("stats file %s already exists; use --overwrite to replace it", statsFile)
+	}
+
 	if r.options.OutputFile != "" {
 		// An existing output file is never clobbered unless --overwrite is
 		// given; then it is truncated, so it holds this run's results only.
@@ -310,6 +338,32 @@ func (r *Runner) RunEnumeration(ctx context.Context) error {
 			}
 		}()
 		outputs = append(outputs, file)
+	}
+
+	if statsFile != "" {
+		file, err := utils.CreateOutputFile(statsFile, r.options.Overwrite)
+		if errors.Is(err, fs.ErrExist) {
+			return configErrorf("stats file %s already exists; use --overwrite to replace it", statsFile)
+		}
+		if err != nil {
+			return fmt.Errorf("cannot create stats file: %w", err)
+		}
+		r.statsMu.Lock()
+		r.run = &RunSummary{Version: r.options.Version, Type: r.options.Type.String(), Started: time.Now()}
+		r.statsMu.Unlock()
+		// Written whatever happens, so an interrupted run keeps its tables.
+		defer func() {
+			r.statsMu.Lock()
+			r.run.TimeMS = time.Since(r.run.Started).Milliseconds()
+			err := writeRunSummary(file, *r.run)
+			r.statsMu.Unlock()
+			if err != nil {
+				logger.Errorf("could not write stats file %s: %s", statsFile, err)
+			}
+			if err := file.Close(); err != nil {
+				logger.Errorf("could not close stats file %s: %s", statsFile, err)
+			}
+		}()
 	}
 
 	return r.EnumerateMultipleTargets(ctx, targets, outputs)
@@ -337,93 +391,5 @@ func matchesTargetType(scanType sources.ScanType, line string) bool {
 		return phoneRegex.MatchString(line)
 	default:
 		return true
-	}
-}
-
-// EnumerateMultipleTargets searches each line of reader as a target. Lines
-// are read in the background so that an interrupt is noticed at once, even
-// while waiting for input. On interrupt it logs "Interrupted" once, starts no
-// further target and returns the context's error.
-func (r *Runner) EnumerateMultipleTargets(ctx context.Context, reader io.Reader, writers []io.Writer) error {
-	if !r.options.NoFilter {
-		logger.Debugf("Results filtering is enabled, leaker will filter results by matching every result to inputted target.")
-	} else {
-		logger.Debugf("Results filtering is disabled, leaker will not filter any result.")
-	}
-
-	lines := make(chan string)
-	readErr := make(chan error, 1)
-	go func() {
-		defer close(lines)
-		scanner := bufio.NewScanner(reader)
-		for scanner.Scan() {
-			select {
-			case lines <- scanner.Text():
-			case <-ctx.Done():
-				readErr <- nil
-				return
-			}
-		}
-		readErr <- scanner.Err()
-	}()
-
-	interrupted := func() error {
-		logger.Info("Interrupted")
-		return ctx.Err()
-	}
-
-	var errs []error
-	searched, failed := 0, 0
-	for {
-		var line string
-		var ok bool
-		select {
-		case <-ctx.Done():
-			return interrupted()
-		case line, ok = <-lines:
-		}
-		if !ok {
-			// The reader also stops when the run is cancelled.
-			if ctx.Err() != nil {
-				return interrupted()
-			}
-			if err := <-readErr; err != nil {
-				errs = append(errs, fmt.Errorf("could not read targets: %w", err))
-			}
-			if searched == 0 && len(errs) == 0 {
-				return configErrorf("no valid %s target in the input", r.options.Type)
-			}
-			if failed > 0 {
-				errs = append(errs, fmt.Errorf("%d of %d targets could not be searched: every source failed", failed, searched))
-			}
-			return errors.Join(errs...)
-		}
-		if ctx.Err() != nil {
-			return interrupted()
-		}
-
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		target := normalizeTarget(r.options.Type, line)
-		// check if the line is a syntactically valid target for the scan type
-		if !matchesTargetType(r.options.Type, target) {
-			logger.Infof("Can't parse input as target, skipping: %s", strings.TrimSpace(line))
-			continue
-		}
-
-		// run enumeration for a single line
-		searched++
-		if err := r.EnumerateSingleTarget(ctx, target, r.options.Type, writers); err != nil {
-			if ctx.Err() != nil {
-				return interrupted()
-			}
-			if errors.Is(err, errAllSourcesFailed) {
-				failed++ // already reported by EnumerateSingleTarget
-				continue
-			}
-			logger.Errorf("error enumerating %s: %s", target, err)
-			errs = append(errs, err)
-		}
 	}
 }

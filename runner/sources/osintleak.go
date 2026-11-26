@@ -3,10 +3,10 @@ package sources
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/vflame6/leaker/logger"
@@ -56,156 +56,179 @@ var osintleakIgnoredFields = map[string]struct{}{
 	"email2":      {},
 }
 
-func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
+func (s *OSINTLeak) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
+	if randomApiKey == "" {
+		return newStats(), nil
+	}
 
-	go func() {
-		defer close(results)
+	var searchType string
+	switch q.Type {
+	case TypeEmail:
+		searchType = "email"
+	case TypeUsername:
+		searchType = "username"
+	case TypeDomain:
+		searchType = "url"
+	case TypePhone:
+		searchType = "phone"
+	default:
+		return newStats(), unsupportedType(s, q.Type)
+	}
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-		if randomApiKey == "" {
-			return
-		}
-
-		var searchType string
-		switch scanType {
-		case TypeEmail:
-			searchType = "email"
-		case TypeUsername:
-			searchType = "username"
-		case TypeDomain:
-			searchType = "url"
-		case TypeKeyword:
-			searchType = "username"
-		case TypePhone:
-			searchType = "phone"
-		}
-
-		// The API only takes the key in the query string; Session.Do keeps
-		// it out of errors and logs.
-		query := url.Values{}
-		query.Set("api_key", randomApiKey)
-		query.Set("query", target)
-		query.Set("type", searchType)
-		query.Set("stealerlogs", "true")
-		query.Set("dbleaks", "true")
-		query.Set("dbleaks2", "true")
-		query.Set("page", "1")
-		query.Set("page_size", "100")
-		endpoint := "https://osintleak.com/api/v1/search_api/?" + query.Encode()
-
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	p := newPager(q, s.Limits())
+	for page := 1; ; page++ {
+		answer, err := s.fetchPage(ctx, session, randomApiKey, q.Target, searchType, page, p.size())
 		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+			return p.stats(), err
 		}
-		req.Header.Set("Accept", "application/json")
-
-		logger.Debugf("Sending a request in OSINTLeak source for %s", target)
-		resp, err := session.Do(req)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-		defer session.DiscardHTTPResponse(resp)
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-		logger.Debugf("Response from OSINTLeak source: status code [%d], size [%d]", resp.StatusCode, len(body))
-
-		if resp.StatusCode != http.StatusOK {
-			results <- Result{
-				Source: s.Name(),
-				Error:  fmt.Errorf("OSINTLeak returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
+		for _, r := range answer.records[:p.take(len(answer.records))] {
+			if r.HasData() {
+				emit(r)
 			}
-			return
 		}
-
-		var response map[string]interface{}
-		if err := json.Unmarshal(body, &response); err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		more := len(answer.records) == p.size()
+		if answer.pages > 0 {
+			more = page < answer.pages
 		}
+		if !p.next(len(answer.records), answer.count, more) {
+			break
+		}
+	}
+	return p.stats(), nil
+}
 
-		// Parse results array
-		data, ok := response["data"].([]interface{})
+// osintLeakPage is one page of results: count is the number of results the
+// API reports (-1 if it does not), pages the number of pages (0 if unknown).
+type osintLeakPage struct {
+	records []Result
+	count   int
+	pages   int
+}
+
+// fetchPage reads one page of size results.
+func (s *OSINTLeak) fetchPage(ctx context.Context, session *Session, apiKey, target, searchType string, page, size int) (osintLeakPage, error) {
+	answer := osintLeakPage{count: -1}
+	// The API only takes the key in the query string; Session.Do keeps
+	// it out of errors and logs.
+	query := url.Values{}
+	query.Set("api_key", apiKey)
+	query.Set("query", target)
+	query.Set("type", searchType)
+	query.Set("stealerlogs", "true")
+	query.Set("dbleaks", "true")
+	query.Set("dbleaks2", "true")
+	query.Set("page", strconv.Itoa(page))
+	query.Set("page_size", strconv.Itoa(size))
+	endpoint := "https://osintleak.com/api/v1/search_api/?" + query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return answer, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debugf("Sending a request in OSINTLeak source for %s (page %d)", target, page)
+	resp, err := session.Do(ctx, req)
+	if err != nil {
+		return answer, err
+	}
+	defer session.DiscardHTTPResponse(resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return answer, err
+	}
+	logger.Debugf("Response from OSINTLeak source: status code [%d], size [%d]", resp.StatusCode, len(body))
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return answer, err
+	}
+	if count, ok := response["count"].(float64); ok {
+		answer.count = int(count)
+	}
+	if pages, ok := response["total_page"].(float64); ok {
+		answer.pages = int(pages)
+	}
+
+	// The documented key is "results"; older answers used "data".
+	data, ok := response["data"].([]interface{})
+	if !ok {
+		data, ok = response["results"].([]interface{})
 		if !ok {
-			// Try "results" key as fallback
-			data, ok = response["results"].([]interface{})
-			if !ok {
-				return
+			return answer, nil
+		}
+	}
+
+	records := make([]Result, 0, len(data))
+	for _, item := range data {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			records = append(records, Result{})
+			continue
+		}
+
+		r := Result{Source: s.Name()}
+
+		// Primary fields — extract with null/None handling
+		r.Email = osintleakString(entry, "email")
+		r.Username = osintleakString(entry, "username")
+		r.Password = osintleakString(entry, "password")
+		r.Phone = osintleakString(entry, "phone")
+		r.Name = osintleakString(entry, "name")
+		r.IP = osintleakString(entry, "ip")
+		r.URL = osintleakString(entry, "url")
+		r.Hash = osintleakString(entry, "pass_hash")
+		r.Salt = osintleakString(entry, "pass_salt")
+
+		// ip_address is used in d2 dataset entries
+		if r.IP == "" {
+			r.IP = osintleakString(entry, "ip_address")
+		}
+
+		// Map log_name → Database (can be null or missing)
+		r.Database = osintleakString(entry, "log_name")
+
+		// Handle first_name/last_name if present
+		if fn := osintleakString(entry, "first_name"); fn != "" {
+			if r.Name != "" {
+				r.Name = fn + " " + r.Name
+			} else {
+				r.Name = fn
+			}
+		}
+		if ln := osintleakString(entry, "last_name"); ln != "" {
+			if r.Name != "" {
+				r.Name += " " + ln
+			} else {
+				r.Name = ln
 			}
 		}
 
-		for _, item := range data {
-			entry, ok := item.(map[string]interface{})
-			if !ok {
+		// Extra fields — anything not in the ignored/primary set
+		for key, val := range entry {
+			if _, ignored := osintleakIgnoredFields[key]; ignored {
 				continue
 			}
-
-			r := Result{Source: s.Name()}
-
-			// Primary fields — extract with null/None handling
-			r.Email = osintleakString(entry, "email")
-			r.Username = osintleakString(entry, "username")
-			r.Password = osintleakString(entry, "password")
-			r.Phone = osintleakString(entry, "phone")
-			r.Name = osintleakString(entry, "name")
-			r.IP = osintleakString(entry, "ip")
-			r.URL = osintleakString(entry, "url")
-			r.Hash = osintleakString(entry, "pass_hash")
-			r.Salt = osintleakString(entry, "pass_salt")
-
-			// ip_address is used in d2 dataset entries
-			if r.IP == "" {
-				r.IP = osintleakString(entry, "ip_address")
+			if key == "first_name" || key == "last_name" {
+				continue
 			}
-
-			// Map log_name → Database (can be null or missing)
-			r.Database = osintleakString(entry, "log_name")
-
-			// Handle first_name/last_name if present
-			if fn := osintleakString(entry, "first_name"); fn != "" {
-				if r.Name != "" {
-					r.Name = fn + " " + r.Name
-				} else {
-					r.Name = fn
-				}
+			strVal := osintleakStringVal(val)
+			if strVal == "" {
+				continue
 			}
-			if ln := osintleakString(entry, "last_name"); ln != "" {
-				if r.Name != "" {
-					r.Name += " " + ln
-				} else {
-					r.Name = ln
-				}
-			}
-
-			// Extra fields — anything not in the ignored/primary set
-			for key, val := range entry {
-				if _, ignored := osintleakIgnoredFields[key]; ignored {
-					continue
-				}
-				if key == "first_name" || key == "last_name" {
-					continue
-				}
-				strVal := osintleakStringVal(val)
-				if strVal == "" {
-					continue
-				}
-				r.SetExtra(key, strVal)
-			}
-
-			if r.HasData() {
-				results <- r
-			}
+			r.SetExtra(key, strVal)
 		}
-	}()
 
-	return results
+		records = append(records, r)
+	}
+	answer.records = records
+	return answer, nil
 }
+
+// Limits: 100 results per page.
+func (s *OSINTLeak) Limits() Limits { return Limits{PageSize: 100} }
 
 // osintleakString extracts a string value from a map entry, treating null and "None" as empty.
 func osintleakString(entry map[string]interface{}, key string) string {
@@ -233,6 +256,11 @@ func osintleakStringVal(val interface{}) string {
 		return ""
 	}
 	return s
+}
+
+// Types: OSINTLeak has no keyword search.
+func (s *OSINTLeak) Types() []ScanType {
+	return []ScanType{TypeEmail, TypeUsername, TypeDomain, TypePhone}
 }
 
 func (s *OSINTLeak) Name() string {

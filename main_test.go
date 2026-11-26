@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -70,9 +71,9 @@ func TestRootHelpCommandShowsUsageWithoutBanner(t *testing.T) {
 }
 
 func TestRootListSourcesCommandStartsWithoutNetwork(t *testing.T) {
-	result := runLeaker(t, "--list-sources", "--no-color")
+	result := runLeaker(t, "sources", "--no-color")
 	if result.code != 0 {
-		t.Fatalf("leaker --list-sources exited %d\nstdout:\n%s\nstderr:\n%s", result.code, result.stdout, result.stderr)
+		t.Fatalf("leaker sources exited %d\nstdout:\n%s\nstderr:\n%s", result.code, result.stdout, result.stderr)
 	}
 	if !strings.Contains(result.stdout, "Source groups:") {
 		t.Fatalf("expected source groups in output, got stdout=%q", result.stdout)
@@ -82,6 +83,60 @@ func TestRootListSourcesCommandStartsWithoutNetwork(t *testing.T) {
 	}
 	if !strings.Contains(result.stdout, "local") {
 		t.Fatalf("expected local source in output, got stdout=%q", result.stdout)
+	}
+}
+
+// TestCLI_SourcesCommandListsKeyStateTypesLimits: "leaker sources" shows, for
+// every source, whether its key is set, what it can search and its limits.
+func TestCLI_SourcesCommandListsKeyStateTypesLimits(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "keys.yaml")
+	if err := os.WriteFile(config, []byte("dehashed: [k1]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := runLeaker(t, "sources", "-p", config, "--no-color")
+	if result.code != 0 {
+		t.Fatalf("leaker sources exited %d\nstderr:\n%s", result.code, result.stderr)
+	}
+	rows := map[string]string{
+		"dehashed":   `configured +email username domain keyword phone +100ms +10000 +10000`,
+		"hudsonrock": `optional +email username domain +100ms`,
+		"hibr":       `missing +domain +1s`,
+		"proxynova":  `not needed +email username domain keyword phone +667ms +100 +100`,
+		"local":      `- +email username domain keyword phone +-`,
+	}
+	for name, cells := range rows {
+		if !regexp.MustCompile(`(?m)^` + name + ` +` + cells).MatchString(result.stdout) {
+			t.Errorf("no %s row matching %q in:\n%s", name, cells, result.stdout)
+		}
+	}
+	if strings.Contains(result.stdout+result.stderr, "Made by") {
+		t.Error("the sources list prints no banner")
+	}
+}
+
+// TestCLI_LimitsMustBePositive: a zero or negative limit is a usage error.
+func TestCLI_LimitsMustBePositive(t *testing.T) {
+	for _, flag := range []string{"--max-results", "--max-requests", "--threads"} {
+		result := runLeaker(t, "email", "jane@example.com", flag, "0", "--no-color")
+		if result.code != 2 || !strings.Contains(result.stderr, flag) {
+			t.Errorf("%s 0: exit code %d, want 2 and the flag named\nstderr:\n%s", flag, result.code, result.stderr)
+		}
+	}
+}
+
+// TestCLI_RemovedFlagsAreUnknown: -V (HIBP verification) and -L (replaced by
+// "leaker sources") are gone.
+func TestCLI_RemovedFlagsAreUnknown(t *testing.T) {
+	// Should a flag still parse, the refusing proxy keeps the search local.
+	proxy := fakeapi.NewProxy(t)
+	for _, args := range [][]string{
+		{"email", "jane@example.com", "-V"}, {"email", "jane@example.com", "--verify"},
+		{"-L"}, {"--list-sources"},
+	} {
+		result := runLeaker(t, append(args, "--no-color", "--proxy", proxy.URL)...)
+		if result.code != 2 || !strings.Contains(result.stderr, "unknown flag") {
+			t.Errorf("leaker %v: exit code %d, want 2 for an unknown flag\nstderr:\n%s", args, result.code, result.stderr)
+		}
 	}
 }
 
@@ -202,7 +257,7 @@ func TestCLI_OnlineWithTwoKeysReportsActiveAndSkipped(t *testing.T) {
 	if result.code != 1 {
 		t.Fatalf("exit code %d, want 1\nstderr:\n%s", result.code, result.stderr)
 	}
-	want := "4 of 15 sources active; 11 skipped (no key)"
+	want := "4 of 17 sources active; 13 skipped (no key)"
 	if n := strings.Count(result.stderr, want); n != 1 {
 		t.Errorf("want %q once on stderr, found %d:\n%s", want, n, result.stderr)
 	}
@@ -225,8 +280,7 @@ func TestCLI_EnvironmentProxyUsedWithoutFlag(t *testing.T) {
 }
 
 // TestCLI_ProxyFlagOverridesEnvironment: --proxy wins over HTTPS_PROXY for
-// the sources. (The -V lookup is covered by TestProxyFlag_EveryHostUsesProxy:
-// here no result ever reaches the verifier.)
+// the sources.
 func TestCLI_ProxyFlagOverridesEnvironment(t *testing.T) {
 	flagProxy, envProxy := fakeapi.NewProxy(t), fakeapi.NewProxy(t)
 	result := runLeakerWith(t, cliOptions{

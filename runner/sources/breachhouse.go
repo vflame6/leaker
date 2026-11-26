@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/vflame6/leaker/logger"
 )
 
 // BreachHouse queries Breach House (breach.house), one of the two DarkEye APIs:
@@ -26,46 +24,53 @@ const (
 	breachHouseBaseURL = "https://breach.house/api/v1"
 	breachHouseName    = "Breach House"
 
-	// Max results per category for one search (the API maximum is 200).
-	breachHouseLimit = 25
+	// Max results per category for one search (the API maximum).
+	breachHouseMaxLimit = 200
 )
 
 // Breach House returns one list per category in this order.
 var breachHouseCategories = []string{"ransomware", "breaches", "leads", "stealers"}
 
-func (s *BreachHouse) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	return darkEyeRun(ctx, darkEyeLookup{
+func (s *BreachHouse) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	return darkEyeSearch(ctx, darkEyeLookup{
 		source:  s.Name(),
 		product: breachHouseName,
 		keys:    s.apiKeys,
-		fetch: func(ctx context.Context, apiKey, domain string) ([]darkEyeRecord, error) {
-			return s.fetch(ctx, session, apiKey, domain)
+		fetch: func(ctx context.Context, q Query, apiKey, domain string) ([]darkEyeRecord, Stats, error) {
+			return s.fetch(ctx, session, q, apiKey, domain)
 		},
-	}, target, scanType)
+	}, q, emit)
 }
 
 // fetch runs one cross-source search.
-func (s *BreachHouse) fetch(ctx context.Context, session *Session, apiKey, domain string) ([]darkEyeRecord, error) {
-	q := url.Values{}
-	q.Set("q", domain)
-	q.Set("limit", strconv.Itoa(breachHouseLimit))
-	endpoint := s.root() + "/search?" + q.Encode()
+func (s *BreachHouse) fetch(ctx context.Context, session *Session, q Query, apiKey, domain string) ([]darkEyeRecord, Stats, error) {
+	stats := newStats()
+	// The limit applies to each category; the search has no further page.
+	limit := newPager(q, s.Limits()).size()
+	values := url.Values{}
+	values.Set("q", domain)
+	values.Set("limit", strconv.Itoa(limit))
+	endpoint := s.root() + "/search?" + values.Encode()
 
 	body, err := darkEyeGet(ctx, session, breachHouseName, endpoint, apiKey, s.apiKeys)
 	if err != nil {
-		return nil, err
+		return nil, stats, err
 	}
 
 	var data map[string]json.RawMessage
 	if err := json.Unmarshal(body, &data); err != nil || data == nil {
-		return nil, fmt.Errorf("%s returned an invalid response", breachHouseName)
+		return nil, stats, fmt.Errorf("%s returned an invalid response", breachHouseName)
 	}
 
 	var records []darkEyeRecord
 	for _, category := range breachHouseCategories {
 		entries := breachHouseEntries(data[category])
-		if len(entries) >= breachHouseLimit {
-			logger.Debugf("Breach House source reached the limit [%d] for %s", breachHouseLimit, category)
+		if len(entries) >= limit {
+			// A full category may have more.
+			stats.Truncated, stats.Limit = true, LimitResults
+			if limit == breachHouseMaxLimit {
+				stats.Limit = LimitAPI
+			}
 		}
 		for _, entry := range entries {
 			var item darkEyeItem
@@ -79,7 +84,7 @@ func (s *BreachHouse) fetch(ctx context.Context, session *Session, apiKey, domai
 			records = append(records, darkEyeRecord{category: category, id: id, item: item})
 		}
 	}
-	return records, nil
+	return records, stats, nil
 }
 
 // breachHouseEntries returns the items of one category, which is either a plain
@@ -108,8 +113,13 @@ func (s *BreachHouse) root() string {
 	return breachHouseBaseURL
 }
 
-// SupportsScanType reports that Breach House searches by domain only.
-func (s *BreachHouse) SupportsScanType(t ScanType) bool { return t == TypeDomain }
+// Types: Breach House searches by domain only.
+func (s *BreachHouse) Types() []ScanType { return []ScanType{TypeDomain} }
+
+// Limits: up to 200 records per category (documented maximum).
+func (s *BreachHouse) Limits() Limits {
+	return Limits{PageSize: breachHouseMaxLimit, MaxResults: breachHouseMaxLimit}
+}
 
 func (s *BreachHouse) Name() string {
 	return "breachhouse"

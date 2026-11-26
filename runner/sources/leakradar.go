@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -18,11 +17,12 @@ import (
 
 const leakRadarDefaultBaseURL = "https://api.leakradar.io"
 
+// Page sizes: the API accepts up to 100 leaks per email page and 1,000 per
+// domain page. --max-requests bounds the pages, and with them the points
+// the auto-unlock spends.
 const (
 	leakRadarEmailPageSize  = 100
 	leakRadarDomainPageSize = 1000
-	// Bounds auto-unlock point spend and runtime while still covering large targets.
-	leakRadarMaxPages = 10
 )
 
 type LeakRadar struct {
@@ -59,69 +59,62 @@ type leakRadarLeak struct {
 	Category         string `json:"category"`
 }
 
-func (s *LeakRadar) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
+func (s *LeakRadar) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	apiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
+	if apiKey == "" {
+		return newStats(), nil
+	}
 
-	go func() {
-		defer close(results)
-
-		apiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-		if apiKey == "" {
-			return
+	var (
+		pages leakRadarPages
+		err   error
+	)
+	switch q.Type {
+	case TypeEmail:
+		isEmail := true
+		pages, err = s.searchEmail(ctx, session, apiKey, q, &isEmail)
+	case TypeUsername:
+		isEmail := false
+		pages, err = s.searchEmail(ctx, session, apiKey, q, &isEmail)
+	case TypeDomain:
+		pages, err = s.searchDomain(ctx, session, apiKey, q)
+	default:
+		return newStats(), unsupportedType(s, q.Type)
+	}
+	for _, leak := range pages.leaks {
+		if result, ok := s.leakToResult(leak); ok {
+			emit(result)
 		}
-
-		var (
-			leaks []leakRadarLeak
-			err   error
-		)
-
-		switch scanType {
-		case TypeEmail:
-			isEmail := true
-			leaks, err = s.searchEmail(ctx, session, apiKey, target, &isEmail)
-		case TypeUsername, TypeKeyword, TypePhone:
-			isEmail := false
-			leaks, err = s.searchEmail(ctx, session, apiKey, target, &isEmail)
-		case TypeDomain:
-			leaks, err = s.searchDomain(ctx, session, apiKey, target)
-		default:
-			return
-		}
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-
-		for _, leak := range leaks {
-			result, ok := s.leakToResult(leak)
-			if ok {
-				results <- result
-			}
-		}
-	}()
-
-	return results
+	}
+	return pages.stats, err
 }
 
-func (s *LeakRadar) searchEmail(ctx context.Context, session *Session, apiKey, target string, isEmail *bool) ([]leakRadarLeak, error) {
+// leakRadarPages is what the pages of one search returned.
+type leakRadarPages struct {
+	leaks []leakRadarLeak
+	stats Stats
+}
+
+func (s *LeakRadar) searchEmail(ctx context.Context, session *Session, apiKey string, q Query, isEmail *bool) (leakRadarPages, error) {
 	body, err := json.Marshal(leakRadarEmailSearchRequest{
-		Email:   target,
+		Email:   q.Target,
 		IsEmail: isEmail,
 	})
 	if err != nil {
-		return nil, err
+		return leakRadarPages{stats: newStats()}, err
 	}
 
-	return s.searchPages(ctx, session, leakRadarEmailPageSize, func(page int) (*http.Request, error) {
+	p := newPager(q, Limits{PageSize: leakRadarEmailPageSize})
+	return s.searchPages(ctx, session, p, func(page, size int) (*http.Request, error) {
 		endpoint, err := url.Parse(s.apiBaseURL() + "/search/email")
 		if err != nil {
 			return nil, err
 		}
-		q := endpoint.Query()
-		q.Set("page", strconv.Itoa(page))
-		q.Set("page_size", strconv.Itoa(leakRadarEmailPageSize))
-		q.Set("auto_unlock", "true")
-		endpoint.RawQuery = q.Encode()
+		values := endpoint.Query()
+		values.Set("page", strconv.Itoa(page))
+		values.Set("page_size", strconv.Itoa(size))
+		values.Set("auto_unlock", "true")
+		endpoint.RawQuery = values.Encode()
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 		if err != nil {
@@ -131,22 +124,23 @@ func (s *LeakRadar) searchEmail(ctx context.Context, session *Session, apiKey, t
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 
-		logger.Debugf("Sending a request in LeakRadar source for %s", target)
+		logger.Debugf("Sending a request in LeakRadar source for %s (page %d)", q.Target, page)
 		return req, nil
 	})
 }
 
-func (s *LeakRadar) searchDomain(ctx context.Context, session *Session, apiKey, target string) ([]leakRadarLeak, error) {
-	return s.searchPages(ctx, session, leakRadarDomainPageSize, func(page int) (*http.Request, error) {
-		endpoint, err := url.Parse(s.apiBaseURL() + "/search/domain/" + url.PathEscape(target) + "/all")
+func (s *LeakRadar) searchDomain(ctx context.Context, session *Session, apiKey string, q Query) (leakRadarPages, error) {
+	p := newPager(q, Limits{PageSize: leakRadarDomainPageSize})
+	return s.searchPages(ctx, session, p, func(page, size int) (*http.Request, error) {
+		endpoint, err := url.Parse(s.apiBaseURL() + "/search/domain/" + url.PathEscape(q.Target) + "/all")
 		if err != nil {
 			return nil, err
 		}
-		q := endpoint.Query()
-		q.Set("page", strconv.Itoa(page))
-		q.Set("page_size", strconv.Itoa(leakRadarDomainPageSize))
-		q.Set("auto_unlock", "true")
-		endpoint.RawQuery = q.Encode()
+		values := endpoint.Query()
+		values.Set("page", strconv.Itoa(page))
+		values.Set("page_size", strconv.Itoa(size))
+		values.Set("auto_unlock", "true")
+		endpoint.RawQuery = values.Encode()
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 		if err != nil {
@@ -155,84 +149,84 @@ func (s *LeakRadar) searchDomain(ctx context.Context, session *Session, apiKey, 
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		req.Header.Set("Accept", "application/json")
 
-		logger.Debugf("Sending a request in LeakRadar source for %s", target)
+		logger.Debugf("Sending a request in LeakRadar source for %s (page %d)", q.Target, page)
 		return req, nil
 	})
 }
 
-func (s *LeakRadar) searchPages(
-	ctx context.Context,
-	session *Session,
-	defaultPageSize int,
-	newRequest func(page int) (*http.Request, error),
-) ([]leakRadarLeak, error) {
-	var leaks []leakRadarLeak
+// searchPages reads pages until the pager stops. It adds up the points the
+// auto-unlock spent and keeps the searches left today. Leaks read before a
+// failure are returned together with the error.
+func (s *LeakRadar) searchPages(ctx context.Context, session *Session, p *pager,
+	newRequest func(page, size int) (*http.Request, error)) (leakRadarPages, error) {
+	var (
+		leaks        []leakRadarLeak
+		points       *int
+		searchesLeft *int
+	)
+	done := func(err error) (leakRadarPages, error) {
+		stats := p.stats()
+		stats.CreditsUsed, stats.CreditsLeft = points, searchesLeft
+		return leakRadarPages{leaks: leaks, stats: stats}, err
+	}
 
-	for page := 1; page <= leakRadarMaxPages; page++ {
+	for page := 1; ; page++ {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return done(err)
 		}
-
-		req, err := newRequest(page)
+		req, err := newRequest(page, p.size())
 		if err != nil {
-			return nil, err
+			return done(err)
 		}
-
-		response, err := s.doSearch(session, req)
+		response, header, err := s.doSearch(session, req)
 		if err != nil {
-			return nil, err
+			return done(err)
 		}
-		leaks = append(leaks, response.Items...)
+		leaks = append(leaks, response.Items[:p.take(len(response.Items))]...)
+		if response.AutoUnlockPointsConsumed != nil {
+			used := *response.AutoUnlockPointsConsumed
+			if points != nil {
+				used += *points
+			}
+			points = &used
+		}
+		if left, err := strconv.Atoi(header.Get("X-RateLimit-Daily-Remaining")); err == nil {
+			searchesLeft = &left
+		}
 
 		pageSize := response.PageSize
 		if pageSize <= 0 {
-			pageSize = defaultPageSize
+			pageSize = p.size()
 		}
 		currentPage := response.Page
 		if currentPage <= 0 {
 			currentPage = page
 		}
-		if len(response.Items) == 0 || currentPage*pageSize >= response.Total {
-			break
-		}
-
-		if page == leakRadarMaxPages {
-			logger.Debugf("LeakRadar reached page cap [%d] with more results available", leakRadarMaxPages)
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(s.MinInterval()):
+		if !p.next(len(response.Items), response.Total, currentPage*pageSize < response.Total) {
+			return done(nil)
 		}
 	}
-
-	return leaks, nil
 }
 
-func (s *LeakRadar) doSearch(session *Session, req *http.Request) (leakRadarSearchResponse, error) {
-	resp, err := session.Do(req)
+// doSearch sends one request and returns the answer and its headers.
+func (s *LeakRadar) doSearch(session *Session, req *http.Request) (leakRadarSearchResponse, http.Header, error) {
+	resp, err := session.Do(req.Context(), req)
 	if err != nil {
-		return leakRadarSearchResponse{}, err
+		return leakRadarSearchResponse{}, nil, err
 	}
 	defer session.DiscardHTTPResponse(resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return leakRadarSearchResponse{}, err
+		return leakRadarSearchResponse{}, nil, err
 	}
 	logger.Debugf("Response from LeakRadar source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
-	if resp.StatusCode != http.StatusOK {
-		return leakRadarSearchResponse{}, fmt.Errorf("LeakRadar returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...))
-	}
-
 	var response leakRadarSearchResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return leakRadarSearchResponse{}, err
+		return leakRadarSearchResponse{}, nil, err
 	}
-	return response, nil
+	return response, resp.Header, nil
 }
 
 func (s *LeakRadar) leakToResult(leak leakRadarLeak) (Result, bool) {
@@ -290,6 +284,10 @@ func (s *LeakRadar) apiBaseURL() string {
 	return leakRadarDefaultBaseURL
 }
 
+// Limits: email and username pages hold up to 100 leaks, domain pages up
+// to 1,000.
+func (s *LeakRadar) Limits() Limits { return Limits{PageSize: leakRadarEmailPageSize} }
+
 func (s *LeakRadar) Name() string {
 	return "leakradar"
 }
@@ -305,6 +303,9 @@ func (s *LeakRadar) NeedsKey() bool {
 func (s *LeakRadar) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
+
+// Types: LeakRadar has no keyword or phone search.
+func (s *LeakRadar) Types() []ScanType { return []ScanType{TypeEmail, TypeUsername, TypeDomain} }
 
 // HasKeys reports whether a usable API key is configured.
 func (s *LeakRadar) HasKeys() bool {

@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -41,7 +43,7 @@ func newUnkeyedTestRunner(sourceNames []string) *Runner {
 		panic(err)
 	}
 	return &Runner{options: opts, available: NewSources(), providerConfig: "provider-config.yaml",
-		session: session, verifier: NewVerifier(false, session)}
+		session: session}
 }
 
 // captureLogs sends log output to a buffer until the test ends.
@@ -93,7 +95,7 @@ func TestConfigureSources_GroupWarnsActiveAndSkipped(t *testing.T) {
 	if len(r.scanSources) != 4 {
 		t.Errorf("got %d active sources, want 4", len(r.scanSources))
 	}
-	want := "4 of 15 sources active; 11 skipped (no key)"
+	want := "4 of 17 sources active; 13 skipped (no key)"
 	if n := strings.Count(logs.String(), want); n != 1 {
 		t.Errorf("want %q once in logs, found %d times:\n%s", want, n, logs)
 	}
@@ -358,21 +360,63 @@ func TestEnumerateMultipleTargets_SkipsNonDomainForDomainType(t *testing.T) {
 type fakeSource struct {
 	name     string
 	emits    []sources.Result
-	onStart  func() // optional hook invoked when Run is called, for ordering assertions
+	onStart  func() // optional hook invoked when Search is called
 	needsKey bool
+	// types the source searches; nil means every type.
+	types []sources.ScanType
+	// stats and err are what Search returns after emitting.
+	stats *sources.Stats
+	err   error
+	// limits is what Limits returns.
+	limits sources.Limits
 }
 
-func (f *fakeSource) Run(ctx context.Context, _ string, _ sources.ScanType, _ *sources.Session) <-chan sources.Result {
+func (f *fakeSource) Search(_ context.Context, _ sources.Query, _ *sources.Session, emit func(sources.Result)) (sources.Stats, error) {
 	if f.onStart != nil {
 		f.onStart()
 	}
-	out := make(chan sources.Result, len(f.emits))
 	for _, r := range f.emits {
-		out <- r
+		emit(r)
 	}
-	close(out)
-	return out
+	stats := sources.Stats{Total: -1}
+	if f.stats != nil {
+		stats = *f.stats
+	}
+	return stats, f.err
 }
+
+func (f *fakeSource) Limits() sources.Limits { return f.limits }
+
+func (f *fakeSource) Types() []sources.ScanType {
+	if f.types == nil {
+		return sources.AllTypes
+	}
+	return f.types
+}
+
+// httpSource sends one GET per target through its session handle, so the
+// source's rate limit applies, and returns no result.
+type httpSource struct {
+	fakeSource
+	interval time.Duration
+}
+
+func (h *httpSource) MinInterval() time.Duration { return h.interval }
+
+func (h *httpSource) Search(ctx context.Context, q sources.Query, s *sources.Session, _ func(sources.Result)) (sources.Stats, error) {
+	stats := sources.Stats{Total: -1}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+h.name+".example.test/?q="+url.QueryEscape(q.Target), nil)
+	if err != nil {
+		return stats, err
+	}
+	resp, err := s.Do(ctx, req)
+	if err != nil {
+		return stats, err
+	}
+	s.DiscardHTTPResponse(resp)
+	return stats, nil
+}
+
 func (f *fakeSource) Name() string               { return f.name }
 func (f *fakeSource) UsesKey() bool              { return false }
 func (f *fakeSource) NeedsKey() bool             { return f.needsKey }
@@ -497,87 +541,44 @@ func TestEnumerate_NoWriteDB(t *testing.T) {
 	}
 }
 
-// TestEnumerate_LocalRunsBeforeOnline verifies ordering: the local source
-// must produce its results BEFORE any online source starts, so local
-// checksums populate the dedup map first.
-func TestEnumerate_LocalRunsBeforeOnline(t *testing.T) {
-	// A signal channel the online fake waits on before emitting, to let
-	// us assert the local fake ran first.
-	localFinished := make(chan struct{})
-
-	localFake := &fakeSource{
-		name: sources.LocalSourceName,
-		emits: []sources.Result{
-			{Source: sources.LocalSourceName, Email: "a@b.com", Password: "early"},
-		},
-	}
-
-	// onStart is called when the online source's Run is invoked; at that
-	// moment, local's channel must already have been drained.
-	onlineStarted := false
-	onlineFake := &fakeSource{
-		name: "snusbase",
-		onStart: func() {
-			select {
-			case <-localFinished:
-				onlineStarted = true
-			case <-time.After(2 * time.Second):
-				onlineStarted = false
-			}
-		},
-		emits: []sources.Result{
-			{Source: "snusbase", Email: "a@b.com", Password: "late"},
-		},
-	}
-
-	// Wrap localFake so we can signal after its Run returns.
-	orderedLocal := &orderingSource{
-		inner:      localFake,
-		afterClose: func() { close(localFinished) },
-	}
+// TestEnumerate_LocalWinsDedup: a record found both in the local database
+// and online is kept once, as the local one, however the searches finish.
+func TestEnumerate_LocalWinsDedup(t *testing.T) {
+	captureLogs(t) // also turns colors off
+	summary := captureSummary(t)
+	twin := sources.Result{Email: "a@b.com", Password: "same"}
+	local, online := twin, twin
+	local.Source, online.Source = sources.LocalSourceName, "snusbase"
+	onlineOnly := sources.Result{Source: "snusbase", Email: "a@b.com", Password: "other"}
 
 	r := newTestRunner([]string{})
-	r.scanSources = []sources.Source{orderedLocal, onlineFake}
+	// Online first in the list: the processing order, not the list, decides.
+	r.scanSources = []sources.Source{
+		&fakeSource{name: "snusbase", emits: []sources.Result{online, onlineOnly}},
+		&fakeSource{name: sources.LocalSourceName, emits: []sources.Result{local}},
+	}
 	r.options.Type = sources.TypeEmail
-	r.options.NoFilter = true
+	r.options.Verbose = true
 	r.leakerDB = nil
 
 	var out bytes.Buffer
-	err := r.EnumerateSingleTarget(context.Background(), "a@b.com", sources.TypeEmail, []io.Writer{&out})
-	if err != nil {
+	if err := r.EnumerateSingleTarget(context.Background(), "a@b.com", sources.TypeEmail, []io.Writer{&out}); err != nil {
 		t.Fatalf("enumerate: %v", err)
 	}
-	if !onlineStarted {
-		t.Error("online source started before local source finished — ordering is wrong")
+	if n := strings.Count(out.String(), "password:same"); n != 1 {
+		t.Errorf("the twin record was written %d times, want once:\n%s", n, out.String())
+	}
+	if !strings.Contains(out.String(), "[local]") {
+		t.Errorf("the twin must be kept as the local record:\n%s", out.String())
+	}
+	rows := summaryRows(t, summary.String())
+	if got := rows["local"]; got.fetched != "1" || got.kept != "1" {
+		t.Errorf("local row %+v, want fetched 1, kept 1", got)
+	}
+	if got := rows["snusbase"]; got.fetched != "2" || got.kept != "1" {
+		t.Errorf("snusbase row %+v, want fetched 2, kept 1 (its twin was dropped)", got)
 	}
 }
-
-// orderingSource wraps a Source and signals after its Run channel closes.
-type orderingSource struct {
-	inner      sources.Source
-	afterClose func()
-}
-
-func (o *orderingSource) Run(ctx context.Context, target string, st sources.ScanType, s *sources.Session) <-chan sources.Result {
-	inner := o.inner.Run(ctx, target, st, s)
-	out := make(chan sources.Result)
-	go func() {
-		defer close(out)
-		for r := range inner {
-			out <- r
-		}
-		if o.afterClose != nil {
-			o.afterClose()
-		}
-	}()
-	return out
-}
-func (o *orderingSource) Name() string               { return o.inner.Name() }
-func (o *orderingSource) UsesKey() bool              { return o.inner.UsesKey() }
-func (o *orderingSource) NeedsKey() bool             { return o.inner.NeedsKey() }
-func (o *orderingSource) AddApiKeys([]string)        {}
-func (o *orderingSource) HasKeys() bool              { return o.inner.HasKeys() }
-func (o *orderingSource) MinInterval() time.Duration { return o.inner.MinInterval() }
 
 // TestEnumerate_FilterIsTypeAware runs the default result filter on the
 // phone and domain scenarios from the v1.8 brief.
@@ -644,7 +645,7 @@ func TestConfigureSources_UnsupportedScanType(t *testing.T) {
 			t.Errorf("%s cannot search emails but is active", s.Name())
 		}
 	}
-	if want := "13 of 15 sources active; 2 skipped (no email search)"; !strings.Contains(logs.String(), want) {
+	if want := "15 of 17 sources active; 2 skipped (no email search)"; !strings.Contains(logs.String(), want) {
 		t.Errorf("want %q in logs:\n%s", want, logs)
 	}
 }
@@ -652,11 +653,8 @@ func TestConfigureSources_UnsupportedScanType(t *testing.T) {
 // errorSource only fails.
 type errorSource struct{ fakeSource }
 
-func (e *errorSource) Run(context.Context, string, sources.ScanType, *sources.Session) <-chan sources.Result {
-	out := make(chan sources.Result, 1)
-	out <- sources.Result{Source: e.name, Error: errors.New("proxyconnect tcp: connection refused")}
-	close(out)
-	return out
+func (e *errorSource) Search(context.Context, sources.Query, *sources.Session, func(sources.Result)) (sources.Stats, error) {
+	return sources.Stats{Total: -1}, errors.New("proxyconnect tcp: connection refused")
 }
 
 // TestEnumerateSingleTarget_AllSourcesFailed: when no source could search,

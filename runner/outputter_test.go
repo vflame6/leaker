@@ -102,10 +102,10 @@ func TestWriteJSONResult_EscapesSpecialChars(t *testing.T) {
 func TestWritePlainResult_TwentyRunsIdentical(t *testing.T) {
 	extras := map[string]string{
 		"stealer_family": "RedLine", "computer_name": "DESKTOP-1", "operating_system": "Windows 10",
-		"date_compromised": "2023-04-01", "hibp_count": "3", "hash_type": "md5",
+		"date_compromised": "2023-04-01", "ip_geo": "Springfield", "category": "stealer",
 	}
-	const want = "email:jane@example.com, password:hunter2, computer_name:DESKTOP-1, date_compromised:2023-04-01, " +
-		"hash_type:md5, hibp_count:3, operating_system:Windows 10, stealer_family:RedLine\n"
+	const want = "email:jane@example.com, password:hunter2, category:stealer, computer_name:DESKTOP-1, date_compromised:2023-04-01, " +
+		"ip_geo:Springfield, operating_system:Windows 10, stealer_family:RedLine\n"
 	for run := 0; run < 20; run++ {
 		r := &sources.Result{Email: "jane@example.com", Password: "hunter2"}
 		for k, v := range extras { // map order differs from run to run

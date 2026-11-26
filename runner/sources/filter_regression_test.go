@@ -110,7 +110,7 @@ func TestFilter_KeepsDarkEyeListings(t *testing.T) {
 		_, _ = io.WriteString(w, `{"sources":[{"id_source":"h1","leak_type":"ransomware_leak","post_title":"Example Corp",
 			"website":"www.example.com (Example Corp)"}],"has_next":false}`)
 	})
-	got = kept(t, withKeys(&HIBR{noDelay: true}, testKey), "example.com", TypeDomain, hibr)
+	got = kept(t, withKeys(&HIBR{}, testKey), "example.com", TypeDomain, hibr)
 	if len(got) != 1 || got[0].Extra["website"] != "www.example.com (Example Corp)" {
 		t.Errorf("HIBR kept %+v, want the listing with its website kept as extra", got)
 	}

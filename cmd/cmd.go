@@ -32,6 +32,9 @@ var CLI struct {
 		Targets string `arg:"" optional:"" complete:"file" help:"Target username or file with usernames, one per line"`
 	} `cmd:"" help:"Search by username."`
 
+	// INFORMATION
+	SourcesCmd struct{} `cmd:"" name:"sources" help:"List the sources with their key state, search types and limits."`
+
 	// SHELL INTEGRATION
 	Completion struct {
 		Shell string `arg:"" enum:"bash,zsh,fish" help:"Shell to print the script for: bash, zsh or fish."`
@@ -45,6 +48,10 @@ var CLI struct {
 	// OPTIMIZATION
 	Timeout     time.Duration `help:"Seconds to wait on each request before timing out" default:"30s"`
 	NoRateLimit bool          `short:"N" help:"Disable rate limiting (DANGER)"`
+	Threads     int           `short:"t" default:"10" help:"Targets to search at the same time"`
+	MaxResults  int           `default:"1000" help:"Records to fetch per source and target at most"`
+	MaxRequests int           `default:"3" help:"Search requests per source and target at most, to spare API credits"`
+	All         bool          `help:"Fetch every record up to each API's cap (lifts --max-results, and --max-requests unless given)"`
 
 	// OUTPUT
 	JSON            bool   `short:"j" help:"Output results as JSONL (one JSON object per line)"`
@@ -52,7 +59,7 @@ var CLI struct {
 	NoFilter        bool   `help:"Disable results filtering, include every result"`
 	Output          string `short:"o" placeholder:"FILE" complete:"file" help:"File to write output to"`
 	Overwrite       bool   `help:"Force overwrite of existing output file"`
-	Verify          bool   `short:"V" help:"Verify credentials using HIBP password check and hash identification"`
+	StatsFile       string `placeholder:"FILE" complete:"file" help:"Write the per-source table of every target to FILE as JSON"`
 
 	// CONFIGURATION
 	ProviderConfig string `short:"p" placeholder:"FILE" complete:"file" help:"Provider config file"`
@@ -69,7 +76,6 @@ var CLI struct {
 	Metadata      bool `short:"M" help:"Include metadata fields (database) in plain output; JSON always includes them"`
 	Debug         bool `short:"D" help:"Enable debug mode"`
 	NoColor       bool `help:"Disable colored output"`
-	ListSources   bool `short:"L" help:"List all available sources"`
 	ClearDatabase bool `short:"C" help:"Clear all cached rows from the local SQLite database"`
 }
 
@@ -130,17 +136,6 @@ func Run() {
 		fmt.Println(VERSION)
 		os.Exit(0)
 	}
-	// list available sources
-	if CLI.ListSources {
-		runner.ListSources(&runner.Options{
-			ListSources:    CLI.ListSources,
-			NoColor:        CLI.NoColor,
-			Output:         os.Stdout,
-			ProviderConfig: CLI.ProviderConfig,
-			Quiet:          CLI.Quiet,
-		})
-		os.Exit(0)
-	}
 	// clear the local database without requiring a scan command
 	if CLI.ClearDatabase {
 		dbPath := (&runner.Options{DBPath: resolveDBPath(CLI.DB, os.Getenv)}).ResolvedDBPath()
@@ -184,6 +179,17 @@ func Run() {
 			logger.Fatal(err)
 		}
 		os.Exit(ExitOK)
+	case "sources":
+		os.Exit(listSources())
+	}
+
+	searchLimit, err := searchLimits(CLI.MaxResults, CLI.MaxRequests, CLI.All, flagTyped(ctx, "max-requests"))
+	if err == nil && CLI.Threads < 1 {
+		err = fmt.Errorf("--threads must be at least 1")
+	}
+	if err != nil {
+		parser.Errorf("%s", err)
+		os.Exit(ExitUsage)
 	}
 
 	// output banner
@@ -225,37 +231,92 @@ func Run() {
 	noWriteDB := resolveNoWriteDB(CLI.NoWriteDB, os.Getenv, logger.Warnf)
 
 	options := &runner.Options{
-		Debug:           CLI.Debug,
-		Insecure:        CLI.Insecure,
-		JSON:            CLI.JSON,
-		ListFile:        CLI.List,
-		ListSources:     CLI.ListSources,
-		NoColor:         CLI.NoColor,
-		NoDeduplication: CLI.NoDeduplication,
-		NoFilter:        CLI.NoFilter,
-		NoRateLimit:     CLI.NoRateLimit,
-		OutputFile:      CLI.Output,
-		Overwrite:       CLI.Overwrite,
-		ProviderConfig:  CLI.ProviderConfig,
-		Proxy:           CLI.Proxy,
-		Quiet:           CLI.Quiet,
-		Sources:         CLI.Sources,
-		Targets:         targets,
-		Timeout:         CLI.Timeout,
-		Type:            scanType,
-		UserAgent:       CLI.UserAgent,
-		Verbose:         CLI.Verbose,
-		Metadata:        CLI.Metadata,
-		Verify:          CLI.Verify,
-		Version:         VERSION,
-		DBPath:          dbPath,
-		NoWriteDB:       noWriteDB,
+		Debug:            CLI.Debug,
+		Insecure:         CLI.Insecure,
+		JSON:             CLI.JSON,
+		ListFile:         CLI.List,
+		MaxRequests:      searchLimit.maxRequests,
+		MaxRequestsTyped: searchLimit.maxRequestsTyped,
+		MaxResults:       searchLimit.maxResults,
+		NoColor:          CLI.NoColor,
+		NoDeduplication:  CLI.NoDeduplication,
+		NoFilter:         CLI.NoFilter,
+		NoRateLimit:      CLI.NoRateLimit,
+		OutputFile:       CLI.Output,
+		Overwrite:        CLI.Overwrite,
+		ProviderConfig:   CLI.ProviderConfig,
+		Proxy:            CLI.Proxy,
+		Quiet:            CLI.Quiet,
+		Sources:          CLI.Sources,
+		StatsFile:        CLI.StatsFile,
+		Targets:          targets,
+		Threads:          CLI.Threads,
+		Timeout:          CLI.Timeout,
+		Type:             scanType,
+		UserAgent:        CLI.UserAgent,
+		Verbose:          CLI.Verbose,
+		Metadata:         CLI.Metadata,
+		Version:          VERSION,
+		DBPath:           dbPath,
+		NoWriteDB:        noWriteDB,
 	}
 
 	runCtx, stop := signalContext()
 	code := run(runCtx, options)
 	stop()
 	os.Exit(code)
+}
+
+// limits are the --max-results and --max-requests of a search, 0 meaning no
+// limit, and whether --max-requests was given (sources with their own
+// default budget use it otherwise).
+type limits struct {
+	maxResults, maxRequests int
+	maxRequestsTyped        bool
+}
+
+// searchLimits returns the limits of a search. --all lifts both, but keeps
+// a --max-requests the user typed.
+func searchLimits(maxResults, maxRequests int, all, maxRequestsTyped bool) (limits, error) {
+	if maxResults < 1 {
+		return limits{}, fmt.Errorf("--max-results must be at least 1 (use --all for no limit)")
+	}
+	if maxRequests < 1 {
+		return limits{}, fmt.Errorf("--max-requests must be at least 1 (use --all for no limit)")
+	}
+	switch {
+	case !all:
+		return limits{maxResults, maxRequests, maxRequestsTyped}, nil
+	case maxRequestsTyped:
+		return limits{0, maxRequests, true}, nil
+	}
+	return limits{}, nil
+}
+
+// flagTyped reports whether the flag was given on the command line, as
+// opposed to taking its default.
+func flagTyped(ctx *kong.Context, name string) bool {
+	for _, p := range ctx.Path {
+		if p.Flag != nil && p.Flag.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// listSources prints the source list ("leaker sources") and returns the
+// exit code.
+func listSources() int {
+	err := runner.ListSources(&runner.Options{
+		NoColor:        CLI.NoColor,
+		Output:         os.Stdout,
+		ProviderConfig: CLI.ProviderConfig,
+		Quiet:          CLI.Quiet,
+	})
+	if err != nil {
+		logger.Failf("%s", err)
+	}
+	return exitCode(err)
 }
 
 // run performs the scan and returns the process exit code.

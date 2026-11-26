@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -115,7 +116,7 @@ func sourceCases() []sourceCase {
 		},
 		{
 			name:       "hibr",
-			newSource:  func() Source { return withKeys(&HIBR{noDelay: true}, testKey) },
+			newSource:  func() Source { return withKeys(&HIBR{}, testKey) },
 			emptyBody:  constBody(`{"sources":[],"has_next":false}`),
 			target:     pathSegmentAfter("/api/metadata/domain/"),
 			domainOnly: true,
@@ -197,6 +198,47 @@ func sourceCases() []sourceCase {
 			target:    queryParam("query"),
 		},
 		{
+			name:      "spycloud",
+			newSource: func() Source { return withKeys(&SpyCloud{}, testKey) },
+			emptyBody: constBody(`{"cursor":"","hits":0,"results":[]}`),
+			target: func(r *http.Request, _ []byte, _ ScanType) (string, bool) {
+				const prefix = "/investigations-v2/breach/data/"
+				escaped := r.URL.EscapedPath()
+				if !strings.HasPrefix(escaped, prefix) {
+					return "", false
+				}
+				_, segment, ok := strings.Cut(strings.TrimPrefix(escaped, prefix), "/")
+				if !ok {
+					return "", false
+				}
+				decoded, err := url.PathUnescape(segment)
+				return decoded, err == nil
+			},
+		},
+		{
+			name:      "flare",
+			newSource: func() Source { return withKeys(&Flare{}, testKey) },
+			emptyBody: func(r *http.Request) string {
+				if r.URL.Path == "/tokens/generate" {
+					return `{"token":"T"}`
+				}
+				return `{"items":[],"next":null}`
+			},
+			target: func(_ *http.Request, body []byte, _ ScanType) (string, bool) {
+				var b struct {
+					Query map[string]string `json:"query"`
+				}
+				if json.Unmarshal(body, &b) != nil || b.Query == nil {
+					return "", false
+				}
+				if v, ok := b.Query["email"]; ok {
+					return v, true
+				}
+				v, ok := b.Query["fqdn"]
+				return v, ok
+			},
+		},
+		{
 			name:      "snusbase",
 			newSource: func() Source { return withKeys(&Snusbase{}, testKey) },
 			emptyBody: constBody(`{"took":0,"size":0,"results":{}}`),
@@ -217,30 +259,31 @@ func sourceCases() []sourceCase {
 	}
 }
 
-// runSource runs src through a session on transport and splits what it
-// returns into data results and errors.
+// runSource runs src through a session on transport and returns what it
+// emitted and the error it returned, if any.
 func runSource(t *testing.T, src Source, target string, st ScanType, transport http.RoundTripper) ([]Result, []error) {
 	t.Helper()
-	session, err := NewSession(SessionOptions{Timeout: 5 * time.Second, UserAgent: "leaker-test", Transport: transport})
+	results, _, err := searchSource(t, src, Query{Target: target, Type: st}, transport)
+	var errs []error
 	if err != nil {
-		t.Fatalf("NewSession: %v", err)
+		errs = append(errs, err)
 	}
+	return results, errs
+}
+
+// searchSource runs q through src with a session on transport.
+func searchSource(t *testing.T, src Source, q Query, transport http.RoundTripper) ([]Result, Stats, error) {
+	t.Helper()
+	session := testSession(t, transport)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	var results []Result
-	var errs []error
-	for r := range src.Run(ctx, target, st, session) {
-		if r.Error != nil {
-			errs = append(errs, r.Error)
-			continue
-		}
-		results = append(results, r)
-	}
+	stats, err := src.Search(ctx, q, session, func(r Result) { results = append(results, r) })
 	if ctx.Err() != nil {
 		t.Fatalf("%s did not finish: %v", src.Name(), ctx.Err())
 	}
-	return results, errs
+	return results, stats, err
 }
 
 // TestSources_SpecialCharacters sends targets with reserved, space and
@@ -264,11 +307,18 @@ func TestSources_SpecialCharacters(t *testing.T) {
 					_, _ = io.WriteString(w, sc.emptyBody(r))
 				}))
 
+				src := sc.newSource()
 				st := tg.st
-				if sc.domainOnly {
+				switch {
+				case sc.domainOnly:
 					st = TypeDomain
+				case !SupportsScanType(src, st) && SupportsScanType(src, TypeUsername):
+					// Sources without keyword search take free text as a username.
+					st = TypeUsername
+				case !SupportsScanType(src, st):
+					t.Skip("no free-text search")
 				}
-				_, errs := runSource(t, sc.newSource(), tg.value, st, srv.Transport())
+				_, errs := runSource(t, src, tg.value, st, srv.Transport())
 				requests := srv.Requests()
 
 				if sc.domainOnly {
@@ -380,8 +430,94 @@ func TestSources_EveryRequestGoesThroughSessionDo(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(data), "Client.Do(") {
-			t.Errorf("%s calls Client.Do directly; use session.Do", f)
+		for _, bypass := range []string{"Client.Do(", "client.Do(", "http.DefaultClient", "http.Get(", "http.Post(", "http.Client{"} {
+			if strings.Contains(string(data), bypass) {
+				t.Errorf("%s sends requests with %s; use session.Do", f, bypass)
+			}
 		}
+	}
+}
+
+// TestSources_Types: each source declares the types its API can search; a
+// type it would have to map onto another field is not one of them.
+func TestSources_Types(t *testing.T) {
+	all := AllTypes
+	emailUserDomain := []ScanType{TypeEmail, TypeUsername, TypeDomain}
+	withPhone := []ScanType{TypeEmail, TypeUsername, TypeDomain, TypePhone}
+	domain := []ScanType{TypeDomain}
+	want := map[Source][]ScanType{
+		&BreachDirectory{}: all,
+		&BreachHouse{}:     domain,
+		&DeHashed{}:        all,
+		&HIBR{}:            domain,
+		&HudsonRock{}:      emailUserDomain,
+		&IntelX{}:          all,
+		&LeakCheck{}:       all,
+		&LeakLookup{}:      withPhone,
+		&LeakRadar{}:       emailUserDomain,
+		&LeakSight{}:       withPhone,
+		&LocalDB{}:         all,
+		&OSINTLeak{}:       withPhone,
+		&ProxyNova{}:       all,
+		&Snusbase{}:        emailUserDomain,
+		&SpyCloud{}:        withPhone,
+		&Flare{}:           {TypeEmail, TypeDomain},
+		&WeLeakInfo{}:      emailUserDomain,
+		&WhiteIntel{}:      emailUserDomain,
+	}
+	for src, types := range want {
+		if got := src.Types(); !slices.Equal(got, types) {
+			t.Errorf("%s.Types() = %v, want %v", src.Name(), got, types)
+		}
+	}
+}
+
+// TestSources_UnsupportedTypeSendsNothing: asked for a type it does not
+// declare, a source fails at once instead of searching another field.
+func TestSources_UnsupportedTypeSendsNothing(t *testing.T) {
+	for _, sc := range sourceCases() {
+		for _, st := range AllTypes {
+			src := sc.newSource()
+			if SupportsScanType(src, st) {
+				continue
+			}
+			t.Run(sc.name+"/"+st.String(), func(t *testing.T) {
+				srv := fakeapi.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_, _ = io.WriteString(w, sc.emptyBody(r))
+				}))
+				_, errs := runSource(t, src, "jane", st, srv.Transport())
+				if len(errs) == 0 {
+					t.Error("expected an error")
+				}
+				if n := len(srv.Requests()); n != 0 {
+					t.Errorf("%d requests sent for an unsupported type", n)
+				}
+			})
+		}
+	}
+}
+
+// TestSources_RedirectIsAnError: every source treats a redirect as an error;
+// none follows it to the other host or depends on it.
+func TestSources_RedirectIsAnError(t *testing.T) {
+	for _, sc := range sourceCases() {
+		t.Run(sc.name, func(t *testing.T) {
+			srv := fakeapi.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Host == "elsewhere.example.test" {
+					t.Errorf("followed a redirect: %s %s", r.Method, r.URL)
+					return
+				}
+				http.Redirect(w, r, "https://elsewhere.example.test/moved", http.StatusMovedPermanently)
+			}))
+			target, st := "jane@example.com", TypeEmail
+			if sc.domainOnly {
+				target, st = "example.com", TypeDomain
+			}
+			results, errs := runSource(t, sc.newSource(), target, st, srv.Transport())
+			if len(errs) == 0 || len(results) != 0 {
+				t.Fatalf("a redirect must be an error: %d results, errors %v", len(results), errs)
+			}
+			assertNoKey(t, errs)
+		})
 	}
 }

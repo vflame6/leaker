@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vflame6/leaker/internal/fakeapi"
 	"github.com/vflame6/leaker/runner/sources"
 )
 
@@ -149,17 +151,15 @@ type blockingSource struct {
 	started chan struct{}
 }
 
-func (b *blockingSource) Run(ctx context.Context, _ string, _ sources.ScanType, _ *sources.Session) <-chan sources.Result {
-	out := make(chan sources.Result)
-	go func() {
-		defer close(out)
-		if b.runs.Add(1) == 1 {
-			close(b.started)
-		}
-		<-ctx.Done()
-	}()
-	return out
+func (b *blockingSource) Search(ctx context.Context, _ sources.Query, _ *sources.Session, _ func(sources.Result)) (sources.Stats, error) {
+	if b.runs.Add(1) == 1 {
+		close(b.started)
+	}
+	<-ctx.Done()
+	return sources.Stats{Total: -1}, ctx.Err()
 }
+func (b *blockingSource) Types() []sources.ScanType  { return sources.AllTypes }
+func (b *blockingSource) Limits() sources.Limits     { return sources.Limits{} }
 func (b *blockingSource) Name() string               { return "blocking" }
 func (b *blockingSource) UsesKey() bool              { return false }
 func (b *blockingSource) NeedsKey() bool             { return false }
@@ -217,28 +217,30 @@ func TestEnumerateMultipleTargets_InterruptWhileWaitingForInput(t *testing.T) {
 	}
 }
 
-// slowSource returns at once but asks for a long pause between requests.
-type slowSource struct{ fakeSource }
-
-func (s *slowSource) MinInterval() time.Duration { return time.Hour }
-
-// TestEnumerateSingleTarget_RateLimitWaitStopsOnInterrupt: the pause between
-// requests ends as soon as the run is interrupted.
-func TestEnumerateSingleTarget_RateLimitWaitStopsOnInterrupt(t *testing.T) {
+// TestEnumerate_RateLimitWaitStopsOnInterrupt: the pause between two
+// requests of a source ends as soon as the run is interrupted.
+func TestEnumerate_RateLimitWaitStopsOnInterrupt(t *testing.T) {
 	captureLogs(t)
+	srv := fakeapi.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "{}")
+	}))
 	r := newTestRunner(nil)
 	r.options.Type = sources.TypeEmail
-	r.scanSources = []sources.Source{&slowSource{fakeSource{name: "slow"}}}
+	r.session = testSession(t, srv.Transport())
+	r.scanSources = []sources.Source{&httpSource{fakeSource: fakeSource{name: "slow"}, interval: time.Hour}}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
 	start := time.Now()
-	err := r.EnumerateSingleTarget(ctx, "a@example.com", sources.TypeEmail, []io.Writer{&bytes.Buffer{}})
-	if !errors.Is(err, context.DeadlineExceeded) {
+	err := r.EnumerateMultipleTargets(ctx, strings.NewReader("a@example.com\nb@example.com\n"), []io.Writer{&bytes.Buffer{}})
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want the context error", err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("returned after %v, want right after the interrupt", elapsed)
+	}
+	if n := len(srv.Requests()); n != 1 {
+		t.Errorf("%d requests, want 1: the second waits an hour", n)
 	}
 }
 
@@ -262,12 +264,12 @@ type cancelingSource struct {
 	cancel context.CancelFunc
 }
 
-func (c *cancelingSource) Run(ctx context.Context, target string, st sources.ScanType, s *sources.Session) <-chan sources.Result {
+func (c *cancelingSource) Search(ctx context.Context, q sources.Query, s *sources.Session, emit func(sources.Result)) (sources.Stats, error) {
 	c.runs++
 	if c.runs == 3 {
 		c.cancel()
 	}
-	return c.fakeSource.Run(ctx, target, st, s)
+	return c.fakeSource.Search(ctx, q, s, emit)
 }
 
 // TestEnumerateMultipleTargets_InterruptNeverReportsSuccess: however the

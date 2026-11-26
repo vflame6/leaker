@@ -1,0 +1,4 @@
+{"balance": 95, "took": "41ms", "total": 2, "entries": [
+  {"id": "1", "email": ["jane@example.com"], "ip_address": ["203.0.113.7"], "username": ["jane"], "password": ["hunter2"], "name": ["Jane Doe"], "phone": ["+1 555 234 1096"], "url": ["https://login.example.com"], "dob": ["1990-01-01"], "database_name": "ExampleDB"},
+  {"id": "2", "email": ["old@example.org", "JANE@example.com"], "hashed_password": ["5f4dcc3b5aa765d61d8327deb882cf99"], "database_name": "Other"}
+]}

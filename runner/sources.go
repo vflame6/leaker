@@ -10,6 +10,7 @@ func NewSources() []sources.Source {
 		&sources.BreachDirectory{},
 		&sources.BreachHouse{},
 		&sources.DeHashed{},
+		&sources.Flare{},
 		&sources.HIBR{},
 		&sources.HudsonRock{},
 		&sources.IntelX{},
@@ -21,6 +22,7 @@ func NewSources() []sources.Source {
 		&sources.OSINTLeak{},
 		&sources.ProxyNova{},
 		&sources.Snusbase{},
+		&sources.SpyCloud{},
 		&sources.WeLeakInfo{},
 		&sources.WhiteIntel{},
 	}

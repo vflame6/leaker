@@ -1,0 +1,7 @@
+{"items": [
+  {"auth_domains": ["login.example.com"], "domain": "example.com", "hash": "B@dPassw0rd", "hash_type": null,
+   "id": 33880703907, "identity_name": "jane@example.com", "imported_at": "2024-07-22T19:25:52.893439+00:00",
+   "known_password_id": null, "source_id": "combolists",
+   "source": {"breached_at": null, "description_en": "Collection of multiple combo lists", "id": "combolists",
+              "is_alert_enabled": true, "leaked_at": null, "name": "Combolists"}}
+], "next": "WyJjb20uZXhhbXBsZSIsIDMzODgwNzAzOTA3XQ"}

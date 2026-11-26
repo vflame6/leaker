@@ -217,7 +217,7 @@ func TestBashCompletion(t *testing.T) {
 		words  []string
 		want   []string
 	}{
-		{"commands", breaksWithEquals, []string{"leaker", ""}, []string{"completion", "domain", "email", "keyword", "phone", "username"}},
+		{"commands", breaksWithEquals, []string{"leaker", ""}, []string{"completion", "domain", "email", "keyword", "phone", "sources", "username"}},
 		{"command prefix", breaksWithEquals, []string{"leaker", "e"}, []string{"email"}},
 		{"hidden command", breaksWithEquals, []string{"leaker", "ma"}, nil},
 		{"long flag", breaksWithEquals, []string{"leaker", "--js"}, []string{"--json"}},
@@ -318,7 +318,7 @@ func TestZshCompletion(t *testing.T) {
 	}
 
 	cases := map[string][]string{
-		"leaker ":                  {"completion", "domain", "email", "keyword", "phone", "username"},
+		"leaker ":                  {"completion", "domain", "email", "keyword", "phone", "sources", "username"},
 		"leaker ma":                nil,
 		"leaker --js":              {"--json"},
 		"leaker email --no-w":      {"--no-write-db"},
@@ -363,7 +363,7 @@ func TestFishCompletion(t *testing.T) {
 	cases := map[string][]string{
 		// fish falls back to substring matches ("ma" finds domain and
 		// email), so this case is what shows the hidden man is not offered.
-		"leaker ":                       {"completion", "domain", "email", "keyword", "phone", "username"},
+		"leaker ":                       {"completion", "domain", "email", "keyword", "phone", "sources", "username"},
 		"leaker --js":                   {"--json"},
 		"leaker email --no-w":           {"--no-write-db"},
 		"leaker -s snus":                {"snusbase"},
@@ -373,6 +373,12 @@ func TestFishCompletion(t *testing.T) {
 		"leaker completion ":            {"bash", "fish", "zsh"},
 		"leaker --timeout ":             nil,
 		"leaker --provider-config=targ": {"--provider-config=targets.txt"},
+		// A flag value that looks like a command is not the command.
+		"leaker -o email ":          {"completion", "domain", "email", "keyword", "phone", "sources", "username"},
+		"leaker --list completion ": {"completion", "domain", "email", "keyword", "phone", "sources", "username"},
+		"leaker -o email e":         {"email"},
+		"leaker -o email email tar": {"targets.txt"},
+		"leaker --output=email ":    {"completion", "domain", "email", "keyword", "phone", "sources", "username"},
 	}
 	for line, want := range cases {
 		if got := complete(line); !slices.Equal(got, want) {

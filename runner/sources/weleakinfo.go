@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,121 +29,110 @@ type weLeakInfoResponse struct {
 	Data []map[string]interface{} `json:"Data"`
 }
 
-func (s *WeLeakInfo) Run(ctx context.Context, target string, scanType ScanType, session *Session) <-chan Result {
-	results := make(chan Result)
+func (s *WeLeakInfo) Search(ctx context.Context, q Query, session *Session, emit func(Result)) (Stats, error) {
+	target, scanType := q.Target, q.Type
+	stats := newStats()
 
-	go func() {
-		defer close(results)
+	randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
+	if randomApiKey == "" {
+		return stats, nil
+	}
 
-		randomApiKey := utils.PickRandom(s.apiKeys, s.Name(), s.NeedsKey())
-		if randomApiKey == "" {
-			return
+	// Extract private key from "pub_key:priv_key" format
+	bearerToken := randomApiKey
+	if idx := strings.LastIndex(randomApiKey, ":"); idx != -1 {
+		bearerToken = randomApiKey[idx+1:]
+	}
+
+	p := newPager(q, s.Limits())
+	searchReq := weLeakInfoRequest{
+		Query:    target,
+		Limit:    strconv.Itoa(p.size()),
+		Wildcard: "false",
+	}
+
+	switch scanType {
+	case TypeEmail:
+		searchReq.Type = "email"
+	case TypeUsername:
+		searchReq.Type = "username"
+	case TypeDomain:
+		searchReq.Query = "*@" + target
+		searchReq.Type = "email"
+		searchReq.Wildcard = "true"
+	default:
+		return stats, unsupportedType(s, scanType)
+	}
+
+	body, err := json.Marshal(searchReq)
+	if err != nil {
+		return stats, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.weleakinfo.io/v3/search",
+		bytes.NewReader(body))
+	if err != nil {
+		return stats, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debugf("Sending a request in WeLeakInfo source for %s", target)
+	resp, err := session.Do(ctx, req)
+	if err != nil {
+		return stats, err
+	}
+	defer session.DiscardHTTPResponse(resp)
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return stats, err
+	}
+	logger.Debugf("Response from WeLeakInfo source: status code [%d], size [%d]", resp.StatusCode, len(respBody))
+
+	var response weLeakInfoResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return stats, err
+	}
+
+	for _, record := range response.Data[:p.take(len(response.Data))] {
+		r := Result{Source: s.Name()}
+		if val, ok := record["email"].(string); ok && val != "" {
+			r.Email = val
 		}
-
-		// Extract private key from "pub_key:priv_key" format
-		bearerToken := randomApiKey
-		if idx := strings.LastIndex(randomApiKey, ":"); idx != -1 {
-			bearerToken = randomApiKey[idx+1:]
+		if val, ok := record["username"].(string); ok && val != "" {
+			r.Username = val
 		}
-
-		searchReq := weLeakInfoRequest{
-			Query:    target,
-			Limit:    "1000",
-			Wildcard: "false",
+		if val, ok := record["password"].(string); ok && val != "" {
+			r.Password = val
 		}
-
-		switch scanType {
-		case TypeEmail:
-			searchReq.Type = "email"
-		case TypeUsername:
-			searchReq.Type = "username"
-		case TypeDomain:
-			searchReq.Query = "*@" + target
-			searchReq.Type = "email"
-			searchReq.Wildcard = "true"
-		case TypeKeyword:
-			searchReq.Type = "password"
-		default:
-			// Phone and any other types — fall back to username search
-			searchReq.Type = "username"
+		if val, ok := record["hash"].(string); ok && val != "" {
+			r.Hash = val
 		}
-
-		body, err := json.Marshal(searchReq)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if val, ok := record["name"].(string); ok && val != "" {
+			r.Name = val
 		}
-
-		req, err := http.NewRequestWithContext(ctx, "POST", "https://api.weleakinfo.io/v3/search",
-			bytes.NewReader(body))
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if val, ok := record["ip"].(string); ok && val != "" {
+			r.IP = val
 		}
-		req.Header.Set("Authorization", "Bearer "+bearerToken)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		logger.Debugf("Sending a request in WeLeakInfo source for %s", target)
-		resp, err := session.Do(req)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if val, ok := record["phone"].(string); ok && val != "" {
+			r.Phone = val
 		}
-		defer session.DiscardHTTPResponse(resp)
-
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
+		if r.HasData() {
+			emit(r)
 		}
-		logger.Debugf("Response from WeLeakInfo source: status code [%d], size [%d]", resp.StatusCode, len(respBody))
-
-		if resp.StatusCode != http.StatusOK {
-			results <- Result{
-				Source: s.Name(),
-				Error:  fmt.Errorf("WeLeakInfo returned status %d: %s", resp.StatusCode, errorBody(respBody, append(s.apiKeys, bearerToken)...)),
-			}
-			return
-		}
-
-		var response weLeakInfoResponse
-		if err := json.Unmarshal(respBody, &response); err != nil {
-			results <- Result{Source: s.Name(), Error: err}
-			return
-		}
-
-		for _, record := range response.Data {
-			r := Result{Source: s.Name()}
-			if val, ok := record["email"].(string); ok && val != "" {
-				r.Email = val
-			}
-			if val, ok := record["username"].(string); ok && val != "" {
-				r.Username = val
-			}
-			if val, ok := record["password"].(string); ok && val != "" {
-				r.Password = val
-			}
-			if val, ok := record["hash"].(string); ok && val != "" {
-				r.Hash = val
-			}
-			if val, ok := record["name"].(string); ok && val != "" {
-				r.Name = val
-			}
-			if val, ok := record["ip"].(string); ok && val != "" {
-				r.IP = val
-			}
-			if val, ok := record["phone"].(string); ok && val != "" {
-				r.Phone = val
-			}
-			if r.HasData() {
-				results <- r
-			}
-		}
-	}()
-
-	return results
+	}
+	// One request: a full answer means more were left behind.
+	p.next(len(response.Data), -1, len(response.Data) == p.size())
+	return p.stats(), nil
 }
+
+// Types: WeLeakInfo has no keyword or phone search.
+func (s *WeLeakInfo) Types() []ScanType { return []ScanType{TypeEmail, TypeUsername, TypeDomain} }
+
+// Limits: one request of up to 1,000 records.
+func (s *WeLeakInfo) Limits() Limits { return Limits{PageSize: 1000, MaxResults: 1000} }
 
 func (s *WeLeakInfo) Name() string {
 	return "weleakinfo"

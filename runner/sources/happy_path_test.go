@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -70,12 +71,13 @@ func happyCases() []happyCase {
 				Name: "Jane Doe", Phone: "+1 555 234 1096", IP: "203.0.113.7", Database: "ExampleDB"}},
 			check: func(t *testing.T, reqs []fakeapi.Request) {
 				expectHeader(t, reqs[0], "Dehashed-Api-Key", testKey)
-				expectJSONBody(t, reqs[0], `{"query":"email:jane@example.com","page":1,"size":100,"de_dupe":true}`)
+				// No --max-results here: one page of the 10,000 a query returns.
+				expectJSONBody(t, reqs[0], `{"query":"email:jane@example.com","page":1,"size":10000,"de_dupe":true}`)
 			},
 		},
 		{
 			name: "hibr", dir: "hibr",
-			source: func() Source { return withKeys(&HIBR{noDelay: true}, testKey) },
+			source: func() Source { return withKeys(&HIBR{}, testKey) },
 			st:     TypeDomain, target: "example.com",
 			routes: map[string]string{"GET haveibeenransom.com/api/metadata/domain/example.com": "domain.json"},
 			want: []Result{
@@ -331,4 +333,40 @@ func expectJSONBody(t *testing.T, r fakeapi.Request, want string) {
 	if string(r.Body) != want {
 		t.Errorf("%s %s: body %s, want %s", r.Method, r.URL.Path, r.Body, want)
 	}
+}
+
+// TestDeHashed_RateLimitedTwiceYieldsOneResultSet is the B1 acceptance check:
+// two 429 answers and then the data give one result set from three requests.
+func TestDeHashed_RateLimitedTwiceYieldsOneResultSet(t *testing.T) {
+	hc := happyCaseNamed(t, "dehashed")
+	fixtures := fixtureHandler(t, hc.dir, hc.routes)
+	var calls atomic.Int32
+	srv := fakeapi.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		fixtures.ServeHTTP(w, r)
+	}))
+	results, errs := runSource(t, hc.source(), hc.target, hc.st, srv.Transport())
+	for _, err := range errs {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(results, hc.want) {
+		t.Errorf("results differ\n got: %+v\nwant: %+v", results, hc.want)
+	}
+	if n := len(srv.Requests()); n != 3 {
+		t.Errorf("server saw %d requests, want 3", n)
+	}
+}
+
+func happyCaseNamed(t *testing.T, name string) happyCase {
+	t.Helper()
+	for _, hc := range happyCases() {
+		if hc.name == name {
+			return hc
+		}
+	}
+	t.Fatalf("no happy case %q", name)
+	return happyCase{}
 }

@@ -18,12 +18,11 @@ func runLocal(t *testing.T, db *LeakerDB, target string, st sources.ScanType) ([
 	src := &sources.LocalDB{Lookup: db.Search}
 	var results []sources.Result
 	var errs []error
-	for r := range src.Run(ctx, target, st, nil) {
-		if r.Error != nil {
-			errs = append(errs, r.Error)
-			continue
-		}
+	_, err := src.Search(ctx, sources.Query{Target: target, Type: st}, nil, func(r sources.Result) {
 		results = append(results, r)
+	})
+	if err != nil {
+		errs = append(errs, err)
 	}
 	return results, errs
 }
