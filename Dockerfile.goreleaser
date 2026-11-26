@@ -1,0 +1,10 @@
+# Release image, published by GoReleaser (dockers_v2) with the release
+# binaries. To build an image from source, use Dockerfile.
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+RUN apk add --no-cache ca-certificates \
+    && adduser -D -u 1000 -s /sbin/nologin app
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/leaker /usr/local/bin/leaker
+USER app
+
+ENTRYPOINT ["leaker"]

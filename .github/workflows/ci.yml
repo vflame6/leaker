@@ -40,6 +40,11 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: "Install zsh, fish and mandoc for the completion and man page tests"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends zsh fish mandoc
       - name: "Build"
         run: go build -o "${{ runner.temp }}/leaker-ci" .
       - name: "Test with the race detector"
@@ -68,3 +73,57 @@ jobs:
           printed="$(docker run --rm leaker:ci --version)"
           echo "leaker --version: ${printed}"
           test "${printed}" = "${VERSION}"
+
+  release-snapshot:
+    name: Release dry run
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Check out code"
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: "Set up Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: "Set up QEMU"
+        uses: docker/setup-qemu-action@v4
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v4
+      - name: "Check the GoReleaser config"
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
+      - name: "Build every release artifact without publishing"
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+      - name: "The archives carry the completions and the man page"
+        run: |
+          for archive in dist/*.tar.gz; do
+            listing="$(tar -tzf "${archive}")"
+            for file in completions/leaker.bash completions/leaker.zsh completions/leaker.fish manpages/leaker.1.gz; do
+              grep -qx "${file}" <<<"${listing}" || { echo "::error::${archive} has no ${file}"; exit 1; }
+            done
+          done
+      - name: "The Debian package installs leaker with its completions and man page"
+        run: |
+          deb="$(ls dist/leaker_*_linux_amd64.deb)"
+          dpkg-deb -c "${deb}" | grep -q ' ./usr/share/man/man1/leaker.1.gz$'
+          sudo dpkg -i "${deb}"
+          test "$(leaker --version)" = "$(jq -r .tag dist/metadata.json)"
+          test -s /usr/share/bash-completion/completions/leaker
+          test -s /usr/share/zsh/vendor-completions/_leaker
+          test -s /usr/share/fish/vendor_completions.d/leaker.fish
+      - name: "The images run on both platforms"
+        run: |
+          tag="$(jq -r .tag dist/metadata.json)"
+          for arch in amd64 arm64; do
+            printed="$(docker run --rm --platform "linux/${arch}" "ghcr.io/vflame6/leaker:${tag}-${arch}" --version)"
+            echo "linux/${arch}: ${printed}"
+            test "${printed}" = "${tag}"
+          done

@@ -17,24 +17,30 @@ import (
 var CLI struct {
 	// COMMAND
 	Domain struct {
-		Targets string `arg:"" optional:"" help:"Target domain or file with domains, one per line"`
+		Targets string `arg:"" optional:"" complete:"file" help:"Target domain or file with domains, one per line"`
 	} `cmd:"" help:"Search by domain name."`
 	Email struct {
-		Targets string `arg:"" optional:"" help:"Target email or file with emails, one per line"`
+		Targets string `arg:"" optional:"" complete:"file" help:"Target email or file with emails, one per line"`
 	} `cmd:"" help:"Search by email address."`
 	Keyword struct {
-		Targets string `arg:"" optional:"" help:"Target keyword or file with keywords, one per line"`
+		Targets string `arg:"" optional:"" complete:"file" help:"Target keyword or file with keywords, one per line"`
 	} `cmd:"" help:"Search by keyword."`
 	Phone struct {
-		Targets string `arg:"" optional:"" help:"Target phone number or file with phone numbers, one per line"`
+		Targets string `arg:"" optional:"" complete:"file" help:"Target phone number or file with phone numbers, one per line"`
 	} `cmd:"" help:"Search by phone number."`
 	Username struct {
-		Targets string `arg:"" optional:"" help:"Target username or file with usernames, one per line"`
+		Targets string `arg:"" optional:"" complete:"file" help:"Target username or file with usernames, one per line"`
 	} `cmd:"" help:"Search by username."`
 
+	// SHELL INTEGRATION
+	Completion struct {
+		Shell string `arg:"" enum:"bash,zsh,fish" help:"Shell to print the script for: bash, zsh or fish."`
+	} `cmd:"" help:"Print the shell completion script."`
+	Man struct{} `cmd:"" hidden:"" help:"Print the man page."`
+
 	// INPUT
-	List    string   `short:"l" help:"File with targets, one per line (- reads stdin)"`
-	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. online (default), all, local, or explicit source names."`
+	List    string   `short:"l" placeholder:"FILE" complete:"file" help:"File with targets, one per line (- reads stdin)"`
+	Sources []string `short:"s" default:"online" complete:"sources" help:"Sources to use for enumeration. online (default), all, local, or explicit source names."`
 
 	// OPTIMIZATION
 	Timeout     time.Duration `help:"Seconds to wait on each request before timing out" default:"30s"`
@@ -44,16 +50,16 @@ var CLI struct {
 	JSON            bool   `short:"j" help:"Output results as JSONL (one JSON object per line)"`
 	NoDeduplication bool   `help:"Disable deduplication of results across sources"`
 	NoFilter        bool   `help:"Disable results filtering, include every result"`
-	Output          string `short:"o" help:"File to write output to"`
+	Output          string `short:"o" placeholder:"FILE" complete:"file" help:"File to write output to"`
 	Overwrite       bool   `help:"Force overwrite of existing output file"`
 	Verify          bool   `short:"V" help:"Verify credentials using HIBP password check and hash identification"`
 
 	// CONFIGURATION
-	ProviderConfig string `short:"p" help:"Provider config file"`
+	ProviderConfig string `short:"p" placeholder:"FILE" complete:"file" help:"Provider config file"`
 	Proxy          string `help:"Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)"`
 	UserAgent      string `short:"A" help:"Custom user agent"`
 	Insecure       bool   `help:"Disable TLS certificate verification (use with caution)"`
-	DB             string `help:"Path to the local SQLite cache DB"`
+	DB             string `placeholder:"FILE" complete:"file" help:"Path to the local SQLite cache DB"`
 	NoWriteDB      bool   `help:"Disable writing results to the local SQLite cache"`
 
 	// DEBUG
@@ -97,8 +103,10 @@ func resolveNoWriteDB(flagValue bool, getenv func(string) string, warnf func(str
 	}
 }
 
-func Run() {
-	parser, err := kong.New(&CLI,
+// newParser builds the command-line parser for CLI. The completion scripts
+// and the man page are generated from its model.
+func newParser() (*kong.Kong, error) {
+	return kong.New(&CLI,
 		kong.Name("leaker"),
 		kong.Description("leaker is a leak discovery tool that returns valid credential leaks for emails, using passive online sources."),
 		kong.ConfigureHelp(kong.HelpOptions{
@@ -106,6 +114,10 @@ func Run() {
 			Summary: true,
 		}),
 		kong.Exit(func(code int) { os.Exit(usageExitCode(code)) }))
+}
+
+func Run() {
+	parser, err := newParser()
 	if err != nil {
 		panic(err)
 	}
@@ -157,6 +169,21 @@ func Run() {
 			os.Exit(0)
 		}
 		parser.FatalIfErrorf(parseErr)
+	}
+
+	// Shell integration prints to stdout before the banner and never touches
+	// the config or the database.
+	switch ctx.Command() {
+	case "completion <shell>":
+		if err := writeCompletion(os.Stdout, parser.Model, CLI.Completion.Shell); err != nil {
+			logger.Fatal(err)
+		}
+		os.Exit(ExitOK)
+	case "man":
+		if err := writeManPage(os.Stdout, parser.Model, VERSION, time.Now()); err != nil {
+			logger.Fatal(err)
+		}
+		os.Exit(ExitOK)
 	}
 
 	// output banner

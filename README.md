@@ -73,7 +73,7 @@ Usage: leaker <command> [flags]
 
 Flags:
   -h, --help                      Show context-sensitive help.
-  -l, --list=STRING               File with targets, one per line (- reads stdin)
+  -l, --list=FILE                 File with targets, one per line (- reads stdin)
   -s, --sources=online,...        Sources to use for enumeration. 
                                   online (default), all, local, or explicit source names.
   --timeout=30s                   Seconds to wait on each request before timing out
@@ -81,14 +81,14 @@ Flags:
   -j, --json                      Output results as JSONL (one JSON object per line)
   --no-deduplication              Disable deduplication of results across sources
   --no-filter                     Disable results filtering, include every result
-  -o, --output=STRING             File to write output to
+  -o, --output=FILE               File to write output to
   --overwrite                     Force overwrite of existing output file
   -V, --verify                    Verify credentials using HIBP password check and hash identification
-  -p, --provider-config=STRING    Provider config file
+  -p, --provider-config=FILE      Provider config file
   --proxy=STRING                  Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)
   -A, --user-agent=STRING         Custom user agent
   --insecure                      Disable TLS certificate verification (use with caution)
-  --db=STRING                     Path to the local SQLite cache DB
+  --db=FILE                       Path to the local SQLite cache DB
   --no-write-db                   Disable writing results to the local SQLite cache
   --version                       Print version of leaker
   -q, --quiet                     Suppress output, print results only
@@ -105,6 +105,7 @@ Commands:
   keyword     Search by keyword.
   phone       Search by phone number.
   username    Search by username.
+  completion  Print the shell completion script.
 
   Run "leaker <command> --help" for more information on a command.
 ```
@@ -113,11 +114,26 @@ Learn more about Leaker's options here: https://github.com/vflame6/leaker/wiki/U
 
 ## Installation
 
-`leaker` requires **go1.26** (the version in `go.mod`) to install successfully. Run the following command to install the latest version:
+Download an archive for your platform from [Releases](https://github.com/vflame6/leaker/releases), or install with one of:
 
 ```shell
+# Homebrew, macOS and Linux
+brew tap vflame6/leaker https://github.com/vflame6/leaker
+brew install --cask vflame6/leaker/leaker
+
+# Docker; the volume keeps the API keys and the local database between runs
+docker run --rm -v leaker:/home/app ghcr.io/vflame6/leaker email jane@example.com
+
+# Linux packages from Releases (not signed)
+sudo dpkg -i leaker_*_linux_amd64.deb                  # Debian, Ubuntu
+sudo dnf install ./leaker_*_linux_amd64.rpm            # Fedora, RHEL
+sudo apk add --allow-untrusted leaker_*_linux_amd64.apk  # Alpine
+
+# Go 1.26 or later
 go install -v github.com/vflame6/leaker@latest
 ```
+
+The archives and packages include shell completions for bash, zsh and fish, and a man page. After `go install`, load completions in your shell's startup file: `eval "$(leaker completion bash)"` for bash, `source <(leaker completion zsh)` for zsh, or `leaker completion fish | source` for fish.
 
 Learn about more ways to install leaker here: https://github.com/vflame6/leaker/wiki/Install
 

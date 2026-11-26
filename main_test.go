@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -314,6 +315,95 @@ func TestCLI_NothingToSearchExitsTwo(t *testing.T) {
 	} {
 		if result := runLeaker(t, append(args, "--no-color")...); result.code != 2 {
 			t.Errorf("leaker %s: exit code %d, want 2\nstderr:\n%s", strings.Join(args, " "), result.code, result.stderr)
+		}
+	}
+}
+
+// TestCLI_CompletionPrintsOnlyTheScript: the script goes to stdout without the
+// banner, and printing it creates no config file.
+func TestCLI_CompletionPrintsOnlyTheScript(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "provider-config.yaml")
+	firstLines := map[string]string{
+		"bash": "# bash completion for leaker",
+		"zsh":  "#compdef leaker",
+		"fish": "# fish completion for leaker",
+	}
+	for shell, first := range firstLines {
+		result := runLeakerWith(t, cliOptions{
+			args: []string{"completion", shell},
+			env:  []string{"LEAKER_PROVIDER_CONFIG=" + config},
+		})
+		if result.code != 0 || result.stderr != "" {
+			t.Fatalf("leaker completion %s exited %d\nstderr:\n%s", shell, result.code, result.stderr)
+		}
+		if !strings.HasPrefix(result.stdout, first+"\n") {
+			t.Errorf("leaker completion %s: output starts with %q, want %q", shell, strings.SplitN(result.stdout, "\n", 2)[0], first)
+		}
+	}
+	if _, err := os.Stat(config); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("printing a completion script created the provider config (stat: %v)", err)
+	}
+}
+
+func TestCLI_CompletionUnknownShellExitsTwo(t *testing.T) {
+	result := runLeaker(t, "completion", "powershell")
+	if result.code != 2 || !strings.Contains(result.stderr, `"powershell"`) {
+		t.Fatalf("leaker completion powershell exited %d, want 2 naming the shell\nstderr:\n%s", result.code, result.stderr)
+	}
+}
+
+// TestCLI_ManPrintsTheManPage: "leaker man" (hidden from --help) prints roff
+// for the release packages.
+func TestCLI_ManPrintsTheManPage(t *testing.T) {
+	result := runLeaker(t, "man")
+	if result.code != 0 || result.stderr != "" {
+		t.Fatalf("leaker man exited %d\nstderr:\n%s", result.code, result.stderr)
+	}
+	if !strings.Contains(result.stdout, "\n.TH LEAKER 1 ") || strings.Contains(result.stdout, "Made by") {
+		t.Errorf("leaker man printed:\n%s", result.stdout)
+	}
+
+	help := runLeaker(t, "--help")
+	for line := range strings.SplitSeq(help.stdout, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "man" {
+			t.Errorf("--help lists the hidden man command: %q", line)
+		}
+	}
+	if !strings.Contains(help.stdout, "completion") {
+		t.Errorf("--help does not list the completion command:\n%s", help.stdout)
+	}
+}
+
+// TestCLI_BashCompletionLoadsAsDocumented runs the load command the bash
+// script's header recommends, on every bash available (macOS /bin/bash 3.2
+// ignores "source <(...)").
+func TestCLI_BashCompletionLoadsAsDocumented(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bash completion runs on Unix")
+	}
+	script := runLeaker(t, "completion", "bash").stdout
+	_, rest, found := strings.Cut(script, "Load it in the current shell with\n#   ")
+	load, _, _ := strings.Cut(rest, "\n")
+	if !found || load == "" {
+		t.Fatalf("the bash script does not document how to load it:\n%s", script)
+	}
+
+	var shells []string
+	if path, err := exec.LookPath("bash"); err == nil {
+		shells = append(shells, path)
+	}
+	if _, err := os.Stat("/bin/bash"); err == nil && !slices.Contains(shells, "/bin/bash") {
+		shells = append(shells, "/bin/bash")
+	}
+	if len(shells) == 0 {
+		t.Skip("bash is not installed")
+	}
+	for _, bash := range shells {
+		cmd := exec.Command(bash, "--norc", "--noprofile", "-c", load+"; complete -p leaker")
+		cmd.Env = append(testEnv(t), "PATH="+filepath.Dir(leakerBin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		if err != nil || !strings.Contains(string(out), "_leaker") {
+			t.Errorf("%s: %q did not register the completion: %v\n%s", bash, load, err, out)
 		}
 	}
 }

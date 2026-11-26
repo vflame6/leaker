@@ -1,13 +1,128 @@
 version: 2
 
+before:
+  hooks:
+    # Shell completions and the man page, for the archives, the Linux packages
+    # and the Homebrew cask. umask 022 makes them world-readable in packages.
+    - sh -ec 'rm -rf completions manpages && mkdir completions manpages'
+    - sh -ec 'umask 022; for shell in bash zsh fish; do go run . completion "$shell" > "completions/leaker.$shell"; done'
+    - sh -ec 'umask 022; go run -ldflags "-X github.com/vflame6/leaker/cmd.VERSION={{ .Tag }}" . man > manpages/leaker.1 && gzip -9n manpages/leaker.1'
+
 builds:
   - env:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X github.com/vflame6/leaker/cmd.VERSION={{.Tag}}
 
+release:
+  # Tags like v1.9.0-rc1 become GitHub prereleases, as the cask and the
+  # latest image already skip them.
+  prerelease: auto
+
 archives:
   - formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - completions/*
+      - manpages/*
+
+nfpms:
+  - vendor: vflame6
+    homepage: https://github.com/vflame6/leaker
+    maintainer: Maksim Radaev <80809363+vflame6@users.noreply.github.com>
+    description: |-
+      Passive leak enumeration tool
+      leaker searches public leak databases for credentials leaked for an
+      email address, username, domain, keyword or phone number.
+    license: MIT
+    formats: [deb, rpm, apk]
+    section: utils
+    contents:
+      - src: completions/leaker.bash
+        dst: /usr/share/bash-completion/completions/leaker
+      - src: completions/leaker.fish
+        dst: /usr/share/fish/vendor_completions.d/leaker.fish
+      # zsh looks in vendor-completions on Debian, site-functions elsewhere.
+      - src: completions/leaker.zsh
+        dst: /usr/share/zsh/vendor-completions/_leaker
+        packager: deb
+      - src: completions/leaker.zsh
+        dst: /usr/share/zsh/site-functions/_leaker
+        packager: rpm
+      - src: completions/leaker.zsh
+        dst: /usr/share/zsh/site-functions/_leaker
+        packager: apk
+      - src: manpages/leaker.1.gz
+        dst: /usr/share/man/man1/leaker.1.gz
+      - src: LICENSE
+        dst: /usr/share/doc/leaker/copyright
+        packager: deb
+      - src: LICENSE
+        dst: /usr/share/licenses/leaker/LICENSE
+        packager: rpm
+      - src: LICENSE
+        dst: /usr/share/licenses/leaker/LICENSE
+        packager: apk
+
+homebrew_casks:
+  - name: leaker
+    description: Passive leak enumeration tool
+    homepage: https://github.com/vflame6/leaker
+    # This repository is the tap: the release commits Casks/leaker.rb to the
+    # default branch with the workflow token, and users run
+    #   brew tap vflame6/leaker https://github.com/vflame6/leaker
+    #   brew install --cask vflame6/leaker/leaker
+    repository:
+      owner: vflame6
+      name: leaker
+    # Prereleases do not update the cask.
+    skip_upload: auto
+    completions:
+      bash: completions/leaker.bash
+      zsh: completions/leaker.zsh
+      fish: completions/leaker.fish
+    manpages:
+      - manpages/leaker.1.gz
+    hooks:
+      post:
+        # The binaries are not signed or notarized, so macOS would refuse to
+        # run one that a cask downloaded.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/leaker"]
+          end
+    # brew uninstall --zap also removes the API keys and the local database
+    # (macOS, then Linux).
+    zap:
+      trash:
+        - ~/Library/Application Support/leaker
+        - ~/.config/leaker
+
+dockers_v2:
+  - images:
+      - ghcr.io/vflame6/leaker
+    tags:
+      - "{{ .Tag }}"
+      - '{{ if not .Prerelease }}latest{{ end }}'
+    dockerfile: Dockerfile.goreleaser
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: leaker
+      org.opencontainers.image.description: Passive leak enumeration tool
+      org.opencontainers.image.source: https://github.com/vflame6/leaker
+      org.opencontainers.image.url: https://github.com/vflame6/leaker
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.version: "{{ .Tag }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+    # GHCR reads these from the multi-platform index.
+    annotations:
+      org.opencontainers.image.description: Passive leak enumeration tool
+      org.opencontainers.image.source: https://github.com/vflame6/leaker
+      org.opencontainers.image.licenses: MIT

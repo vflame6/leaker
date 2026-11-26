@@ -11,3 +11,5 @@ tmp
 *.db
 *.db-wal
 *.db-shm
+completions
+manpages
