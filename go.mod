@@ -3,7 +3,7 @@ module github.com/vflame6/leaker
 go 1.26.0
 
 require (
-	github.com/alecthomas/kong v1.16.1
+	github.com/alecthomas/kong v1.17.0
 	github.com/mattn/go-isatty v0.0.24
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.61.1
