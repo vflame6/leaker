@@ -103,3 +103,13 @@ func TestDebugSuppressedAtInfoLevel(t *testing.T) {
 		t.Errorf("debug messages should be suppressed at LevelInfo, got: %q", buf.String())
 	}
 }
+
+func TestFailfPrintsAtFatalLevelWithoutExiting(t *testing.T) {
+	var buf bytes.Buffer
+	l := New(LevelFatal, &buf) // what -q sets
+	l.SetNoColor(true)
+	l.Failf("config error: %s", "missing key")
+	if got := buf.String(); got != "[FATAL] config error: missing key\n" {
+		t.Errorf("output = %q", got)
+	}
+}

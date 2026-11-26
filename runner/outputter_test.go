@@ -61,7 +61,7 @@ func TestWritePlainResult_PropagatesWriteError(t *testing.T) {
 func TestWriteJSONResult_ValidOutput(t *testing.T) {
 	var buf bytes.Buffer
 	r := &sources.Result{Source: "leakcheck", Email: "user@example.com", Password: "abc"}
-	err := WriteJSONResult(&buf, false, r, "user@example.com")
+	err := WriteJSONResult(&buf, r, "user@example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestWriteJSONResult_ValidOutput(t *testing.T) {
 func TestWriteJSONResult_EscapesSpecialChars(t *testing.T) {
 	var buf bytes.Buffer
 	r := &sources.Result{Source: "src", Password: `value with "quotes" and \backslash`}
-	err := WriteJSONResult(&buf, false, r, "target")
+	err := WriteJSONResult(&buf, r, "target")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,5 +94,50 @@ func TestWriteJSONResult_EscapesSpecialChars(t *testing.T) {
 	out := strings.TrimSpace(buf.String())
 	if !strings.HasPrefix(out, "{") || !strings.HasSuffix(out, "}") {
 		t.Errorf("expected valid JSON object, got: %q", out)
+	}
+}
+
+// TestWritePlainResult_TwentyRunsIdentical: the same record always prints the
+// same bytes, whatever order its extra fields were set in.
+func TestWritePlainResult_TwentyRunsIdentical(t *testing.T) {
+	extras := map[string]string{
+		"stealer_family": "RedLine", "computer_name": "DESKTOP-1", "operating_system": "Windows 10",
+		"date_compromised": "2023-04-01", "hibp_count": "3", "hash_type": "md5",
+	}
+	const want = "email:jane@example.com, password:hunter2, computer_name:DESKTOP-1, date_compromised:2023-04-01, " +
+		"hash_type:md5, hibp_count:3, operating_system:Windows 10, stealer_family:RedLine\n"
+	for run := 0; run < 20; run++ {
+		r := &sources.Result{Email: "jane@example.com", Password: "hunter2"}
+		for k, v := range extras { // map order differs from run to run
+			r.SetExtra(k, v)
+		}
+		var buf bytes.Buffer
+		if err := WritePlainResult(&buf, false, false, r); err != nil {
+			t.Fatal(err)
+		}
+		if buf.String() != want {
+			t.Fatalf("run %d printed\n%q\nwant\n%q", run, buf.String(), want)
+		}
+	}
+}
+
+// TestWriteJSONResult_DatabaseWithoutMetadata: JSON always names the breach;
+// -M only changes plain output.
+func TestWriteJSONResult_DatabaseWithoutMetadata(t *testing.T) {
+	var buf bytes.Buffer
+	r := &sources.Result{Source: "snusbase", Email: "jane@example.com", Database: "ExampleDB"}
+	if err := WriteJSONResult(&buf, r, "jane@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `"database":"ExampleDB"`) {
+		t.Errorf("JSON lacks the database: %s", buf.String())
+	}
+
+	buf.Reset()
+	if err := WritePlainResult(&buf, false, false, r); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "ExampleDB") {
+		t.Errorf("plain output without -M must not show the database: %s", buf.String())
 	}
 }

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -62,7 +65,7 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in LeakLookup source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -79,7 +82,7 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("LeakLookup returned status %d: %s", resp.StatusCode, string(body)),
+				Error:  fmt.Errorf("LeakLookup returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -108,7 +111,9 @@ func (s *LeakLookup) Run(ctx context.Context, target string, scanType ScanType, 
 			return
 		}
 
-		for breachName, rawRecords := range breaches {
+		// Map order is random; sort so the same response always prints the same way.
+		for _, breachName := range slices.Sorted(maps.Keys(breaches)) {
+			rawRecords := breaches[breachName]
 			// Try to parse as array of objects (private key response)
 			var records []map[string]interface{}
 			if err := json.Unmarshal(rawRecords, &records); err != nil {
@@ -176,7 +181,12 @@ func (s *LeakLookup) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *LeakLookup) RateLimit() int {
-	// Public: 10 requests/day
-	return 1
+// HasKeys reports whether a usable API key is configured.
+func (s *LeakLookup) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval: public keys allow 10 requests per day.
+func (s *LeakLookup) MinInterval() time.Duration {
+	return time.Second
 }

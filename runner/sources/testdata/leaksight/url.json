@@ -1,0 +1,4 @@
+{"total": 2, "success": [
+  {"host": "https://login.example.com", "path": "/signin", "user": "jane@example.com", "pass": "hunter2"},
+  {"host": "https://mail.example.com", "path": "", "user": "bob", "pass": "pw"}
+]}

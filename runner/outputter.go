@@ -44,7 +44,9 @@ type jsonResult struct {
 	Extra    map[string]string `json:"extra,omitempty"`
 }
 
-func WriteJSONResult(writer io.Writer, includeMetadata bool, result *sources.Result, target string) error {
+// WriteJSONResult writes result as one JSON line. The breach name (database)
+// is always included; -M only affects plain output.
+func WriteJSONResult(writer io.Writer, result *sources.Result, target string) error {
 	jr := jsonResult{
 		Source:   result.Source,
 		Target:   target,
@@ -56,11 +58,9 @@ func WriteJSONResult(writer io.Writer, includeMetadata bool, result *sources.Res
 		IP:       result.IP,
 		Phone:    result.Phone,
 		Name:     result.Name,
+		Database: result.Database,
 		URL:      result.URL,
 		Extra:    result.Extra,
-	}
-	if includeMetadata {
-		jr.Database = result.Database
 	}
 	data, err := json.Marshal(jr)
 	if err != nil {

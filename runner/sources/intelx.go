@@ -18,6 +18,9 @@ import (
 
 type IntelX struct {
 	apiKeys []intelxKey
+
+	// pollDelay overrides MinInterval between result polls (tests only).
+	pollDelay time.Duration
 }
 
 // intelxKey holds a parsed HOST:API_KEY pair.
@@ -108,7 +111,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending search request in IntelX source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -124,7 +127,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("IntelX search returned status %d: %s", resp.StatusCode, string(respBody)),
+				Error:  fmt.Errorf("IntelX search returned status %d: %s", resp.StatusCode, errorBody(respBody, randomApiKey)),
 			}
 			return
 		}
@@ -155,7 +158,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 			case <-ctx.Done():
 				s.terminateSearch(ctx, session, apiURL, randomApiKey, searchID)
 				return
-			case <-time.After(time.Second / time.Duration(s.RateLimit())):
+			case <-time.After(s.pollInterval()):
 			}
 
 			logger.Debugf("Sending a request for IntelX poll attempt %d", attempt)
@@ -169,7 +172,7 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 			resultReq.Header.Set("x-key", randomApiKey)
 			resultReq.Header.Set("Accept", "application/json")
 
-			resultResp, err := session.Client.Do(resultReq)
+			resultResp, err := session.Do(resultReq)
 			if err != nil {
 				results <- Result{Source: s.Name(), Error: err}
 				return
@@ -278,9 +281,9 @@ func (s *IntelX) Run(ctx context.Context, target string, scanType ScanType, sess
 
 // parseIntelxLine parses a raw leak line from IntelX files.
 // Lines come in various formats:
-//   - email:password (combo list)
-//   - email;password
-//   - CSV: id,,email,hash,name (database dumps)
+//   - URL:LOGIN:PASSWORD (stealer logs)
+//   - email:password (combo list), also with ; tab | or space between fields
+//   - CSV: id,,email,hash,name (database dumps), fields possibly quoted
 //   - email:password:hash:salt
 //
 // The parser detects the format and maps fields to Result.
@@ -291,9 +294,16 @@ func parseIntelxLine(line, target string) Result {
 		return r
 	}
 
+	if u, ok := parseIntelxURLLine(line, target); ok {
+		return u
+	}
+
 	// Try CSV format first (comma-separated with potential empty fields)
 	if strings.Count(line, ",") >= 2 {
 		parts := strings.Split(line, ",")
+		for i := range parts {
+			parts[i] = unquoteIntelx(parts[i])
+		}
 		// Find which part contains the target email
 		emailIdx := -1
 		for i, p := range parts {
@@ -303,14 +313,10 @@ func parseIntelxLine(line, target string) Result {
 			}
 		}
 		if emailIdx >= 0 {
-			r.Email = strings.TrimSpace(parts[emailIdx])
+			r.Email = parts[emailIdx]
 			// Assign remaining non-empty fields heuristically
 			for i, p := range parts {
-				if i == emailIdx {
-					continue
-				}
-				p = strings.TrimSpace(p)
-				if p == "" || p == "''" {
+				if i == emailIdx || p == "" {
 					continue
 				}
 				assignIntelxField(&r, p)
@@ -319,13 +325,22 @@ func parseIntelxLine(line, target string) Result {
 		}
 	}
 
-	// Colon-separated: email:password or email:password:hash:extra
-	sep := ":"
-	if strings.Contains(line, ";") && !strings.Contains(line, ":") {
-		sep = ";"
+	// Colon-separated: email:password or email:password:hash:extra. Other
+	// dumps put a semicolon, tab, pipe or spaces between the fields.
+	var parts []string
+	switch {
+	case strings.Contains(line, ":"):
+		parts = strings.SplitN(line, ":", 4)
+	case strings.Contains(line, ";"):
+		parts = strings.SplitN(line, ";", 4)
+	case strings.ContainsAny(line, "\t|"):
+		parts = strings.FieldsFunc(line, func(c rune) bool { return c == '\t' || c == '|' })
+	default:
+		parts = strings.Fields(line)
 	}
-
-	parts := strings.SplitN(line, sep, 4)
+	for i := range parts {
+		parts[i] = unquoteIntelx(parts[i])
+	}
 	switch len(parts) {
 	case 1:
 		r.Email = parts[0]
@@ -338,7 +353,7 @@ func parseIntelxLine(line, target string) Result {
 		// Third field is typically a hash
 		if looksLikeHash(parts[2]) {
 			r.Hash = parts[2]
-		} else if parts[2] != "" && parts[2] != "''" {
+		} else if parts[2] != "" {
 			r.SetExtra("field3", parts[2])
 		}
 	default: // 4+
@@ -346,15 +361,61 @@ func parseIntelxLine(line, target string) Result {
 		r.Password = parts[1]
 		if looksLikeHash(parts[2]) {
 			r.Hash = parts[2]
-		} else if parts[2] != "" && parts[2] != "''" {
+		} else if parts[2] != "" {
 			r.SetExtra("field3", parts[2])
 		}
-		if parts[3] != "" && parts[3] != "''" {
+		if parts[3] != "" {
 			r.Salt = parts[3]
 		}
 	}
 
 	return r
+}
+
+// parseIntelxURLLine parses a URL:LOGIN:PASSWORD line from stealer logs. The
+// URL keeps its scheme and port: "https://login.example.com:8443/x:john:pw".
+// A line without a scheme is only read this way when its host belongs to the
+// searched domain, so "user.name:password:hash" combos keep their meaning.
+func parseIntelxURLLine(line, target string) (Result, bool) {
+	last := strings.LastIndex(line, ":")
+	if last <= 0 {
+		return Result{}, false
+	}
+	prev := strings.LastIndex(line[:last], ":")
+	if prev <= 0 {
+		return Result{}, false
+	}
+	pageURL, login, password := line[:prev], line[prev+1:last], line[last+1:]
+	if login == "" {
+		return Result{}, false
+	}
+	if strings.Contains(pageURL, "://") {
+		if urlHost(pageURL) == "" {
+			return Result{}, false
+		}
+	} else if strings.ContainsAny(pageURL, "@ ") || !withinDomain(urlHost(pageURL), normalizeHost(target)) {
+		return Result{}, false
+	}
+
+	r := Result{URL: pageURL, Password: password}
+	if strings.Contains(login, "@") {
+		r.Email = login
+	} else {
+		r.Username = login
+	}
+	return r, true
+}
+
+// unquoteIntelx trims spaces and one pair of surrounding quotes from a field.
+func unquoteIntelx(field string) string {
+	field = strings.TrimSpace(field)
+	if len(field) >= 2 {
+		first, last := field[0], field[len(field)-1]
+		if first == last && (first == '\'' || first == '"' || first == '`') {
+			field = strings.TrimSpace(field[1 : len(field)-1])
+		}
+	}
+	return field
 }
 
 // assignIntelxField heuristically assigns a CSV field value to a Result.
@@ -434,12 +495,12 @@ func (s *IntelX) fetchMatchingLines(ctx context.Context, session *Session, apiUR
 	req.URL.RawQuery = q.Encode()
 	req.Header.Set("x-key", apiKey)
 
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		logger.Debugf("IntelX file read error for %s: %v", record.Name, err)
 		return nil, 0, fmt.Errorf("IntelX file read request failed")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Debugf("IntelX file read returned status %d for %s", resp.StatusCode, record.Name)
@@ -497,7 +558,7 @@ func (s *IntelX) terminateSearch(ctx context.Context, session *Session, apiURL, 
 	}
 	req.Header.Set("x-key", apiKey)
 
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		return
 	}
@@ -518,10 +579,12 @@ func (s *IntelX) NeedsKey() bool {
 }
 
 func (s *IntelX) AddApiKeys(keys []string) {
+	s.apiKeys = nil
 	for _, key := range keys {
 		idx := strings.Index(key, ":")
-		if idx < 0 {
-			logger.Warnf("IntelX: invalid key format %q — expected HOST:API_KEY (e.g. 2.intelx.io:your-uuid-key)", key)
+		if idx <= 0 || idx == len(key)-1 {
+			// Never print the key itself.
+			logger.Warnf("IntelX: ignoring a key that is not in HOST:API_KEY format (e.g. 2.intelx.io:your-uuid-key)")
 			continue
 		}
 		s.apiKeys = append(s.apiKeys, intelxKey{
@@ -531,6 +594,20 @@ func (s *IntelX) AddApiKeys(keys []string) {
 	}
 }
 
-func (s *IntelX) RateLimit() int {
-	return 1
+// HasKeys reports whether a usable API key is configured.
+func (s *IntelX) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *IntelX) MinInterval() time.Duration {
+	return time.Second
+}
+
+// pollInterval is the pause before each result poll.
+func (s *IntelX) pollInterval() time.Duration {
+	if s.pollDelay > 0 {
+		return s.pollDelay
+	}
+	return s.MinInterval()
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -40,9 +42,12 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 		}
 
 		// BreachDirectory supports auto-detection of input type
-		url := fmt.Sprintf("https://breachdirectory.p.rapidapi.com/?func=auto&term=%s", target)
+		query := url.Values{}
+		query.Set("func", "auto")
+		query.Set("term", target)
+		endpoint := "https://breachdirectory.p.rapidapi.com/?" + query.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -52,7 +57,7 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in BreachDirectory source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -69,7 +74,7 @@ func (s *BreachDirectory) Run(ctx context.Context, target string, scanType ScanT
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("BreachDirectory returned status %d: %s", resp.StatusCode, string(body)),
+				Error:  fmt.Errorf("BreachDirectory returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -120,7 +125,12 @@ func (s *BreachDirectory) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *BreachDirectory) RateLimit() int {
-	// Free tier: 10 requests/month; paid tiers higher
-	return 1
+// HasKeys reports whether a usable API key is configured.
+func (s *BreachDirectory) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval: the free tier allows 10 requests per month; paid tiers allow more.
+func (s *BreachDirectory) MinInterval() time.Duration {
+	return time.Second
 }

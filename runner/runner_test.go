@@ -3,22 +3,117 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
 )
 
-// newTestRunner builds a minimal Runner with the given source names.
+// newTestRunner builds a minimal Runner with the given source names. Every
+// source that takes a key has one, so source selection is not limited by
+// missing keys.
 func newTestRunner(sourceNames []string) *Runner {
+	r := newUnkeyedTestRunner(sourceNames)
+	for _, s := range r.available {
+		if s.UsesKey() {
+			s.AddApiKeys([]string{"host.example:test-key"})
+		}
+	}
+	return r
+}
+
+// newUnkeyedTestRunner is newTestRunner without any API key. The scan type
+// defaults to domain, which every source supports.
+func newUnkeyedTestRunner(sourceNames []string) *Runner {
 	opts := &Options{
 		Sources: sourceNames,
 		Output:  &bytes.Buffer{},
 		Timeout: 5 * time.Second,
+		Type:    sources.TypeDomain,
 	}
-	return &Runner{options: opts}
+	session, err := sources.NewSession(sources.SessionOptions{Timeout: opts.Timeout, UserAgent: "leaker-test"})
+	if err != nil {
+		panic(err)
+	}
+	return &Runner{options: opts, available: NewSources(), providerConfig: "provider-config.yaml",
+		session: session, verifier: NewVerifier(false, session)}
+}
+
+// captureLogs sends log output to a buffer until the test ends.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	logger.SetNoColor(true)
+	level := logger.GetMaxLevel()
+	logger.SetMaxLevel(logger.LevelInfo)
+	t.Cleanup(func() {
+		logger.SetOutput(os.Stderr)
+		logger.SetNoColor(false)
+		logger.SetMaxLevel(level)
+	})
+	return &buf
+}
+
+// TestConfigureSources_ExplicitWithoutKeyIsConfigError: a source named in -s
+// without a key stops the run before any request, naming the sources.
+func TestConfigureSources_ExplicitWithoutKeyIsConfigError(t *testing.T) {
+	r := newUnkeyedTestRunner([]string{"snusbase", "intelx"})
+	err := r.configureSources()
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("err = %v, want *ConfigError", err)
+	}
+	for _, name := range []string{"snusbase", "intelx"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("error %q does not name %s", err, name)
+		}
+	}
+}
+
+// TestConfigureSources_GroupWarnsActiveAndSkipped: groups skip sources
+// without keys and say so once.
+func TestConfigureSources_GroupWarnsActiveAndSkipped(t *testing.T) {
+	logs := captureLogs(t)
+	r := newUnkeyedTestRunner([]string{"online"})
+	for _, s := range r.available {
+		if s.Name() == "leakcheck" || s.Name() == "snusbase" {
+			s.AddApiKeys([]string{"k"})
+		}
+	}
+	if err := r.configureSources(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// two keyed sources plus hudsonrock and proxynova, which need no key
+	if len(r.scanSources) != 4 {
+		t.Errorf("got %d active sources, want 4", len(r.scanSources))
+	}
+	want := "4 of 15 sources active; 11 skipped (no key)"
+	if n := strings.Count(logs.String(), want); n != 1 {
+		t.Errorf("want %q once in logs, found %d times:\n%s", want, n, logs)
+	}
+}
+
+func TestConfigureSources_ZeroRunnableIsConfigError(t *testing.T) {
+	r := newUnkeyedTestRunner([]string{"online"})
+	r.available = []sources.Source{&fakeSource{name: "needskey", needsKey: true}}
+	var cfgErr *ConfigError
+	if err := r.configureSources(); !errors.As(err, &cfgErr) {
+		t.Fatalf("err = %v, want *ConfigError", err)
+	}
+}
+
+func TestConfigureSources_InvalidIsConfigError(t *testing.T) {
+	r := newTestRunner([]string{"nonexistent-source"})
+	var cfgErr *ConfigError
+	if err := r.configureSources(); !errors.As(err, &cfgErr) {
+		t.Fatalf("err = %v, want *ConfigError", err)
+	}
 }
 
 // TestConfigureSources_All verifies that "all" adds every source in AllSources,
@@ -158,8 +253,9 @@ func TestEnumerateMultipleTargets_SkipsBlankLines(t *testing.T) {
 	var out bytes.Buffer
 	input := strings.NewReader("\n   \n\n")
 	err := r.EnumerateMultipleTargets(context.Background(), input, []io.Writer{&out})
-	if err != nil {
-		t.Fatalf("unexpected error on blank-only input: %v", err)
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("blank-only input searches nothing: err = %v, want *ConfigError", err)
 	}
 	// no results expected
 	if out.Len() != 0 {
@@ -178,8 +274,9 @@ func TestEnumerateMultipleTargets_SkipsNonEmailForEmailType(t *testing.T) {
 	// "notanemail" should be skipped; empty scanSources means valid emails produce no output either
 	input := strings.NewReader("notanemail\nnotanemail.com\n")
 	err := r.EnumerateMultipleTargets(context.Background(), input, []io.Writer{&out})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("no valid target: err = %v, want *ConfigError", err)
 	}
 	if out.Len() != 0 {
 		t.Errorf("expected no output for non-email input, got: %q", out.String())
@@ -207,8 +304,9 @@ func TestEnumerateMultipleTargets_NormalizesPhoneInput(t *testing.T) {
 	var out2 bytes.Buffer
 	input2 := strings.NewReader("123\nnot-a-phone\n")
 	err = r.EnumerateMultipleTargets(context.Background(), input2, []io.Writer{&out2})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("no valid phone: err = %v, want *ConfigError", err)
 	}
 }
 
@@ -245,8 +343,9 @@ func TestEnumerateMultipleTargets_SkipsNonDomainForDomainType(t *testing.T) {
 	var out bytes.Buffer
 	input := strings.NewReader("not a domain\nuser@example.com\n")
 	err := r.EnumerateMultipleTargets(context.Background(), input, []io.Writer{&out})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("no valid domain: err = %v, want *ConfigError", err)
 	}
 	if out.Len() != 0 {
 		t.Errorf("expected no output for non-domain input, got: %q", out.String())
@@ -257,9 +356,10 @@ func TestEnumerateMultipleTargets_SkipsNonDomainForDomainType(t *testing.T) {
 // without hitting real APIs. Each fake emits the given Results once and
 // closes its channel.
 type fakeSource struct {
-	name    string
-	emits   []sources.Result
-	onStart func() // optional hook invoked when Run is called, for ordering assertions
+	name     string
+	emits    []sources.Result
+	onStart  func() // optional hook invoked when Run is called, for ordering assertions
+	needsKey bool
 }
 
 func (f *fakeSource) Run(ctx context.Context, _ string, _ sources.ScanType, _ *sources.Session) <-chan sources.Result {
@@ -273,11 +373,12 @@ func (f *fakeSource) Run(ctx context.Context, _ string, _ sources.ScanType, _ *s
 	close(out)
 	return out
 }
-func (f *fakeSource) Name() string        { return f.name }
-func (f *fakeSource) UsesKey() bool       { return false }
-func (f *fakeSource) NeedsKey() bool      { return false }
-func (f *fakeSource) AddApiKeys([]string) {}
-func (f *fakeSource) RateLimit() int      { return 1000 }
+func (f *fakeSource) Name() string               { return f.name }
+func (f *fakeSource) UsesKey() bool              { return false }
+func (f *fakeSource) NeedsKey() bool             { return f.needsKey }
+func (f *fakeSource) AddApiKeys([]string)        {}
+func (f *fakeSource) HasKeys() bool              { return false }
+func (f *fakeSource) MinInterval() time.Duration { return 0 }
 
 // TestEnumerate_LocalResultsNotWrittenBack verifies that results emitted
 // by the local source are NOT re-inserted into the database (they're
@@ -311,7 +412,7 @@ func TestEnumerate_LocalResultsNotWrittenBack(t *testing.T) {
 	r.leakerDB = db
 
 	var out bytes.Buffer
-	err = r.EnumerateSingleTarget(context.Background(), "dup@example.com", sources.TypeEmail, 5*time.Second, []io.Writer{&out})
+	err = r.EnumerateSingleTarget(context.Background(), "dup@example.com", sources.TypeEmail, []io.Writer{&out})
 	if err != nil {
 		t.Fatalf("enumerate: %v", err)
 	}
@@ -357,7 +458,7 @@ func TestEnumerate_OnlineResultsWritten(t *testing.T) {
 	r.leakerDB = db
 
 	var out bytes.Buffer
-	err = r.EnumerateSingleTarget(context.Background(), "new@example.com", sources.TypeEmail, 5*time.Second, []io.Writer{&out})
+	err = r.EnumerateSingleTarget(context.Background(), "new@example.com", sources.TypeEmail, []io.Writer{&out})
 	if err != nil {
 		t.Fatalf("enumerate: %v", err)
 	}
@@ -387,7 +488,7 @@ func TestEnumerate_NoWriteDB(t *testing.T) {
 	r.leakerDB = nil // simulate --no-write-db without an existing DB
 
 	var out bytes.Buffer
-	err := r.EnumerateSingleTarget(context.Background(), "x@example.com", sources.TypeEmail, 5*time.Second, []io.Writer{&out})
+	err := r.EnumerateSingleTarget(context.Background(), "x@example.com", sources.TypeEmail, []io.Writer{&out})
 	if err != nil {
 		t.Fatalf("enumerate: %v", err)
 	}
@@ -442,7 +543,7 @@ func TestEnumerate_LocalRunsBeforeOnline(t *testing.T) {
 	r.leakerDB = nil
 
 	var out bytes.Buffer
-	err := r.EnumerateSingleTarget(context.Background(), "a@b.com", sources.TypeEmail, 5*time.Second, []io.Writer{&out})
+	err := r.EnumerateSingleTarget(context.Background(), "a@b.com", sources.TypeEmail, []io.Writer{&out})
 	if err != nil {
 		t.Fatalf("enumerate: %v", err)
 	}
@@ -471,8 +572,131 @@ func (o *orderingSource) Run(ctx context.Context, target string, st sources.Scan
 	}()
 	return out
 }
-func (o *orderingSource) Name() string        { return o.inner.Name() }
-func (o *orderingSource) UsesKey() bool       { return o.inner.UsesKey() }
-func (o *orderingSource) NeedsKey() bool      { return o.inner.NeedsKey() }
-func (o *orderingSource) AddApiKeys([]string) {}
-func (o *orderingSource) RateLimit() int      { return o.inner.RateLimit() }
+func (o *orderingSource) Name() string               { return o.inner.Name() }
+func (o *orderingSource) UsesKey() bool              { return o.inner.UsesKey() }
+func (o *orderingSource) NeedsKey() bool             { return o.inner.NeedsKey() }
+func (o *orderingSource) AddApiKeys([]string)        {}
+func (o *orderingSource) HasKeys() bool              { return o.inner.HasKeys() }
+func (o *orderingSource) MinInterval() time.Duration { return o.inner.MinInterval() }
+
+// TestEnumerate_FilterIsTypeAware runs the default result filter on the
+// phone and domain scenarios from the v1.8 brief.
+func TestEnumerate_FilterIsTypeAware(t *testing.T) {
+	cases := []struct {
+		name   string
+		st     sources.ScanType
+		target string
+		emits  []sources.Result
+		want   []string
+	}{
+		{
+			name: "phone formats", st: sources.TypePhone, target: "15552341096",
+			emits: []sources.Result{{Source: "s", Phone: "15552341096", Password: "a"}, {Source: "s", Phone: "+1 (555) 234-1096", Password: "b"}},
+			want:  []string{"password:a, phone:15552341096", "password:b, phone:+1 (555) 234-1096"},
+		},
+		{
+			name: "domain look-alikes", st: sources.TypeDomain, target: "example.com",
+			emits: []sources.Result{
+				{Source: "s", Email: "a@example.com"}, {Source: "s", Email: "x@sub.example.com"},
+				{Source: "s", Email: "a@notexample.com"}, {Source: "s", Email: "b@example.com.evil.org"},
+			},
+			want: []string{"email:a@example.com", "email:x@sub.example.com"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newTestRunner(nil)
+			r.scanSources = []sources.Source{&fakeSource{name: "s", emits: c.emits}}
+			r.options.Type = c.st
+
+			var out bytes.Buffer
+			if err := r.EnumerateSingleTarget(context.Background(), c.target, c.st, []io.Writer{&out}); err != nil {
+				t.Fatalf("enumerate: %v", err)
+			}
+			got := strings.Split(strings.TrimSpace(out.String()), "\n")
+			if strings.Join(got, "|") != strings.Join(c.want, "|") {
+				t.Errorf("output lines %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestConfigureSources_UnsupportedScanType: a domain-only source cannot run
+// an email search. Named explicitly it is a config error; in a group it is
+// skipped and counted.
+func TestConfigureSources_UnsupportedScanType(t *testing.T) {
+	r := newTestRunner([]string{"hibr"})
+	r.options.Type = sources.TypeEmail
+	err := r.configureSources()
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) || !strings.Contains(err.Error(), "hibr") || !strings.Contains(err.Error(), "domain") {
+		t.Fatalf("err = %v, want a *ConfigError naming hibr and domain searches", err)
+	}
+
+	logs := captureLogs(t)
+	r = newTestRunner([]string{"online"})
+	r.options.Type = sources.TypeEmail
+	if err := r.configureSources(); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range r.scanSources {
+		if s.Name() == "hibr" || s.Name() == "breachhouse" {
+			t.Errorf("%s cannot search emails but is active", s.Name())
+		}
+	}
+	if want := "13 of 15 sources active; 2 skipped (no email search)"; !strings.Contains(logs.String(), want) {
+		t.Errorf("want %q in logs:\n%s", want, logs)
+	}
+}
+
+// errorSource only fails.
+type errorSource struct{ fakeSource }
+
+func (e *errorSource) Run(context.Context, string, sources.ScanType, *sources.Session) <-chan sources.Result {
+	out := make(chan sources.Result, 1)
+	out <- sources.Result{Source: e.name, Error: errors.New("proxyconnect tcp: connection refused")}
+	close(out)
+	return out
+}
+
+// TestEnumerateSingleTarget_AllSourcesFailed: when no source could search,
+// the run must not claim "0 leaks".
+func TestEnumerateSingleTarget_AllSourcesFailed(t *testing.T) {
+	logs := captureLogs(t)
+	r := newTestRunner(nil)
+	r.options.Type = sources.TypeEmail
+	r.scanSources = []sources.Source{&errorSource{fakeSource{name: "a"}}, &errorSource{fakeSource{name: "b"}}}
+	err := r.EnumerateSingleTarget(context.Background(), "jane@example.com", sources.TypeEmail, []io.Writer{io.Discard})
+	if err == nil {
+		t.Fatal("expected an error when every source failed")
+	}
+	if strings.Contains(logs.String(), "Found 0 leaks") {
+		t.Errorf("must not report 0 leaks:\n%s", logs)
+	}
+
+	logs.Reset()
+	r.scanSources = []sources.Source{&errorSource{fakeSource{name: "a"}},
+		&fakeSource{name: "b", emits: []sources.Result{{Source: "b", Email: "jane@example.com", Password: "x"}}}}
+	if err := r.EnumerateSingleTarget(context.Background(), "jane@example.com", sources.TypeEmail, []io.Writer{io.Discard}); err != nil {
+		t.Fatalf("partial failure is not an error: %v", err)
+	}
+	if !strings.Contains(logs.String(), "Found 1 leaks for jane@example.com") || !strings.Contains(logs.String(), "1 of 2 sources failed") {
+		t.Errorf("summary must count the failed source:\n%s", logs)
+	}
+}
+
+// TestRunEnumeration_AllSourcesFailedIsRuntimeError: the error reaches the
+// caller once, as a runtime error (exit code 1).
+func TestRunEnumeration_AllSourcesFailedIsRuntimeError(t *testing.T) {
+	captureLogs(t)
+	r := newTestRunner(nil)
+	r.options.Type = sources.TypeEmail
+	r.options.Targets = "-"
+	r.options.StdinReader = strings.NewReader("a@example.com\nb@example.com\n")
+	r.scanSources = []sources.Source{&errorSource{fakeSource{name: "a"}}}
+	err := r.RunEnumeration(context.Background())
+	var cfgErr *ConfigError
+	if err == nil || errors.As(err, &cfgErr) || !strings.Contains(err.Error(), "2 of 2 targets") {
+		t.Fatalf("err = %v, want a runtime error about 2 of 2 targets", err)
+	}
+}

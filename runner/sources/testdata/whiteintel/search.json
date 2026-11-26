@@ -1,0 +1,1 @@
+{"success": true, "results": [{"data_type": "consumer", "url": "https://login.example.com", "username": "jane@example.com", "password": "hunter2", "log_date": "2024-02-03", "hostname": "DESKTOP-9", "ip": "198.51.100.9", "malware_path": "C:\\Users\\jane\\AppData\\stealer.exe"}]}

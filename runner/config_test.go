@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,39 +66,78 @@ func TestCreateProviderConfigYAML_ContainsSourcesNeedingKeys(t *testing.T) {
 	}
 }
 
-func TestUnmarshalFrom_ValidYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-
-	// Write a config with a fake key for leakcheck
-	cfg := map[string][]string{"leakcheck": {"fakekey123"}}
-	data, _ := yaml.Marshal(cfg)
-	if err := os.WriteFile(path, data, 0644); err != nil {
+func writeProviderConfig(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "provider-config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return path
+}
 
-	// UnmarshalFrom should not error on a valid file
-	if err := UnmarshalFrom(path); err != nil {
+func TestLoadProviderKeys_GivesKeysToTheRunnersSources(t *testing.T) {
+	data, _ := yaml.Marshal(map[string][]string{"leakcheck": {"fakekey123"}})
+	path := writeProviderConfig(t, string(data))
+
+	srcs := NewSources()
+	if err := loadProviderKeys(path, srcs); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, s := range srcs {
+		if got, want := s.HasKeys(), s.Name() == "leakcheck"; got != want {
+			t.Errorf("%s.HasKeys() = %v, want %v", s.Name(), got, want)
+		}
+	}
+	for _, s := range AllSources {
+		if s.HasKeys() {
+			t.Errorf("global AllSources must stay key-free, %s has keys", s.Name())
+		}
 	}
 }
 
-func TestUnmarshalFrom_MissingFile(t *testing.T) {
-	err := UnmarshalFrom("/nonexistent/path/config.yaml")
-	if err == nil {
+func TestLoadProviderKeys_EmptyFileIsFine(t *testing.T) {
+	if err := loadProviderKeys(writeProviderConfig(t, ""), NewSources()); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadProviderKeys_MissingFile(t *testing.T) {
+	if err := loadProviderKeys("/nonexistent/path/config.yaml", NewSources()); err == nil {
 		t.Error("expected error for missing config file")
 	}
 }
 
-func TestUnmarshalFrom_MalformedYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte("not: valid: yaml: [unclosed"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	err := UnmarshalFrom(path)
-	if err == nil {
+func TestLoadProviderKeys_MalformedYAML(t *testing.T) {
+	if err := loadProviderKeys(writeProviderConfig(t, "not: valid: yaml: [unclosed"), NewSources()); err == nil {
 		t.Error("expected error for malformed YAML")
+	}
+}
+
+// TestNewRunner_ProviderConfigProblemsAreConfigErrors: a -p file that is
+// missing or unreadable stops the run instead of silently using no keys.
+func TestNewRunner_ProviderConfigProblemsAreConfigErrors(t *testing.T) {
+	captureLogs(t)
+	for name, path := range map[string]string{
+		"missing":   filepath.Join(t.TempDir(), "nope.yaml"),
+		"malformed": writeProviderConfig(t, "not: valid: yaml: [unclosed"),
+	} {
+		_, err := NewRunner(&Options{ProviderConfig: path, Sources: []string{"proxynova"}, NoWriteDB: true, DBPath: filepath.Join(t.TempDir(), "x.db")})
+		var cfgErr *ConfigError
+		if !errors.As(err, &cfgErr) {
+			t.Errorf("%s config: err = %v, want *ConfigError", name, err)
+		}
+	}
+}
+
+// TestNewRunner_BlankKeyIsNoKey: a placeholder empty key does not make a
+// source runnable.
+func TestNewRunner_BlankKeyIsNoKey(t *testing.T) {
+	captureLogs(t)
+	config := writeProviderConfig(t, "snusbase: ['', '   ']\n")
+	_, err := NewRunner(&Options{ProviderConfig: config, Sources: []string{"snusbase"}, NoWriteDB: true,
+		DBPath: filepath.Join(t.TempDir(), "x.db")})
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) || !strings.Contains(err.Error(), "snusbase") {
+		t.Fatalf("err = %v, want a *ConfigError naming snusbase", err)
 	}
 }

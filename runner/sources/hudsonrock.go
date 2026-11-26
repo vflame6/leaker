@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -46,18 +48,22 @@ func (s *HudsonRock) Run(ctx context.Context, target string, scanType ScanType, 
 func (s *HudsonRock) runFree(ctx context.Context, target string, scanType ScanType, session *Session, results chan<- Result) {
 	const baseURL = "https://cavalier.hudsonrock.com/api/json/v2/osint-tools/"
 
-	var url string
+	query := url.Values{}
+	var endpoint string
 	switch scanType {
 	case TypeEmail:
-		url = baseURL + "search-by-email?email=" + target
+		query.Set("email", target)
+		endpoint = baseURL + "search-by-email?" + query.Encode()
 	case TypeDomain:
-		url = baseURL + "search-by-domain?domain=" + target
+		query.Set("domain", target)
+		endpoint = baseURL + "search-by-domain?" + query.Encode()
 	default:
 		// Username, keyword, phone — all fall back to username search
-		url = baseURL + "search-by-username?username=" + target
+		query.Set("username", target)
+		endpoint = baseURL + "search-by-username?" + query.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		results <- Result{Source: s.Name(), Error: err}
 		return
@@ -65,7 +71,7 @@ func (s *HudsonRock) runFree(ctx context.Context, target string, scanType ScanTy
 	req.Header.Set("Accept", "application/json")
 
 	logger.Debugf("Sending a request in HudsonRock (free) source for %s", target)
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		results <- Result{Source: s.Name(), Error: err}
 		return
@@ -82,7 +88,7 @@ func (s *HudsonRock) runFree(ctx context.Context, target string, scanType ScanTy
 	if resp.StatusCode != http.StatusOK {
 		results <- Result{
 			Source: s.Name(),
-			Error:  fmt.Errorf("HudsonRock returned status %d: %s", resp.StatusCode, string(body)),
+			Error:  fmt.Errorf("HudsonRock returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 		}
 		return
 	}
@@ -117,9 +123,12 @@ func (s *HudsonRock) runPaid(ctx context.Context, target string, scanType ScanTy
 		searchType = "username"
 	}
 
-	url := fmt.Sprintf("%s?type=%s&query=%s", baseURL, searchType, target)
+	query := url.Values{}
+	query.Set("type", searchType)
+	query.Set("query", target)
+	endpoint := baseURL + "?" + query.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		results <- Result{Source: s.Name(), Error: err}
 		return
@@ -128,7 +137,7 @@ func (s *HudsonRock) runPaid(ctx context.Context, target string, scanType ScanTy
 	req.Header.Set("Accept", "application/json")
 
 	logger.Debugf("Sending a request in HudsonRock (paid) source for %s", target)
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		results <- Result{Source: s.Name(), Error: err}
 		return
@@ -145,7 +154,7 @@ func (s *HudsonRock) runPaid(ctx context.Context, target string, scanType ScanTy
 	if resp.StatusCode != http.StatusOK {
 		results <- Result{
 			Source: s.Name(),
-			Error:  fmt.Errorf("HudsonRock paid API returned status %d: %s", resp.StatusCode, string(body)),
+			Error:  fmt.Errorf("HudsonRock paid API returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 		}
 		return
 	}
@@ -213,6 +222,12 @@ func (s *HudsonRock) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *HudsonRock) RateLimit() int {
-	return 10
+// HasKeys reports whether a usable API key is configured.
+func (s *HudsonRock) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *HudsonRock) MinInterval() time.Duration {
+	return 100 * time.Millisecond
 }

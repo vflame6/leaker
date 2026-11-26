@@ -1,0 +1,2 @@
+{"message": "This email address is associated with a computer that was infected by an info-stealer.",
+ "stealers": [{"computer_name": "DESKTOP-1", "operating_system": "Windows 10", "date_compromised": "2023-04-01T00:00:00.000Z", "stealer_family": "RedLine", "ip": "198.51.100.4", "top_passwords": ["hun****"], "top_logins": ["jane@example.com"]}]}

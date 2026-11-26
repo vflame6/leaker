@@ -1,6 +1,9 @@
 package sources
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // LocalSourceName is the name used by the LocalDB source. It is also the
 // token users pass to `-s local` on the CLI.
@@ -35,6 +38,8 @@ func (s *LocalDB) UsesKey() bool       { return false }
 func (s *LocalDB) NeedsKey() bool      { return false }
 func (s *LocalDB) AddApiKeys([]string) {}
 
-// RateLimit is effectively unbounded — SQLite calls are local and cheap.
-// Returning a large number keeps the runner's post-source sleep to ~0.
-func (s *LocalDB) RateLimit() int { return 1000 }
+// MinInterval is zero: SQLite calls are local and cheap.
+func (s *LocalDB) MinInterval() time.Duration { return 0 }
+
+// HasKeys is always false: the local database needs no key.
+func (s *LocalDB) HasKeys() bool { return false }

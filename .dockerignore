@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.claude
+.superpowers
+.DS_Store
+docs
+dist
+tmp
+/leaker
+*.db
+*.db-wal
+*.db-shm

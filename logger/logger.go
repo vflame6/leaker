@@ -151,6 +151,12 @@ func (l *Logger) Fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
+// Failf logs a formatted message at Fatal level without exiting, for callers
+// that choose the exit code themselves. Like Fatal, it prints even with -q.
+func (l *Logger) Failf(format string, args ...any) {
+	l.log(LevelFatal, format, args...)
+}
+
 // Error logs a message at Error level.
 func (l *Logger) Error(args ...any) {
 	l.log(LevelError, "%s", fmt.Sprint(args...))
@@ -237,6 +243,11 @@ func Fatal(args ...any) {
 // Fatalf logs a formatted message at Fatal level using the DefaultLogger and exits.
 func Fatalf(format string, args ...any) {
 	DefaultLogger.Fatalf(format, args...)
+}
+
+// Failf logs a formatted message at Fatal level without exiting, using the DefaultLogger.
+func Failf(format string, args ...any) {
+	DefaultLogger.Failf(format, args...)
 }
 
 // Error logs a message at Error level using the DefaultLogger.

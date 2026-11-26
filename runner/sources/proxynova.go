@@ -7,12 +7,17 @@ import (
 	"github.com/vflame6/leaker/logger"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type ProxyNovaResponse struct {
 	Count int      `json:"count"`
 	Lines []string `json:"lines"`
+	// Error is set when ProxyNova refuses a query, e.g. when rate limited.
+	Error string `json:"error"`
 }
 
 type ProxyNova struct {
@@ -83,14 +88,18 @@ func (s *ProxyNova) Run(ctx context.Context, target string, scanType ScanType, s
 
 // fetchPage retrieves one page of results from ProxyNova starting at offset start.
 func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, session *Session) (*ProxyNovaResponse, error) {
-	url := fmt.Sprintf("https://api.proxynova.com/comb?query=%s&start=%d&limit=100", target, start)
+	query := url.Values{}
+	query.Set("query", target)
+	query.Set("start", strconv.Itoa(start))
+	query.Set("limit", "100")
+	endpoint := "https://api.proxynova.com/comb?" + query.Encode()
 	logger.Debugf("Sending a request in ProxyNova source for %s (start=%d)", target, start)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +113,16 @@ func (s *ProxyNova) fetchPage(ctx context.Context, target string, start int, ses
 
 	var response ProxyNovaResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse ProxyNova response: %s", string(body))
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, errorBody(body))
+		}
+		return nil, fmt.Errorf("failed to parse ProxyNova response: %s", errorBody(body))
+	}
+	if response.Error != "" {
+		return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, response.Error)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ProxyNova returned status %d: %s", resp.StatusCode, errorBody(body))
 	}
 
 	return &response, nil
@@ -127,8 +145,13 @@ func (s *ProxyNova) AddApiKeys(_ []string) {
 	// no key needed
 }
 
-func (s *ProxyNova) RateLimit() int {
-	// from https://www.proxynova.com/tools/comb/
-	// "You are limited to about 100 requests per minute."
-	return 90
+// HasKeys reports whether a usable API key is configured.
+func (s *ProxyNova) HasKeys() bool {
+	return false
+}
+
+// MinInterval follows https://www.proxynova.com/tools/comb/:
+// "You are limited to about 100 requests per minute." 667ms is about 90 per minute.
+func (s *ProxyNova) MinInterval() time.Duration {
+	return 667 * time.Millisecond
 }

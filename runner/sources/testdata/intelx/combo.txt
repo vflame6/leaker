@@ -1,0 +1,3 @@
+bob@example.com:x
+jane@example.com:hunter2
+JANE@example.com;s3cret

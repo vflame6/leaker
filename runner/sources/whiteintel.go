@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -90,7 +91,7 @@ func (s *WhiteIntel) Run(ctx context.Context, target string, scanType ScanType, 
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in WhiteIntel source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -107,7 +108,7 @@ func (s *WhiteIntel) Run(ctx context.Context, target string, scanType ScanType, 
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("WhiteIntel returned status %d: %s", resp.StatusCode, string(respBody)),
+				Error:  fmt.Errorf("WhiteIntel returned status %d: %s", resp.StatusCode, errorBody(respBody, s.apiKeys...)),
 			}
 			return
 		}
@@ -121,7 +122,7 @@ func (s *WhiteIntel) Run(ctx context.Context, target string, scanType ScanType, 
 		if !response.Success {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("WhiteIntel request failed: %s", string(respBody)),
+				Error:  fmt.Errorf("WhiteIntel request failed: %s", errorBody(respBody, s.apiKeys...)),
 			}
 			return
 		}
@@ -171,6 +172,12 @@ func (s *WhiteIntel) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *WhiteIntel) RateLimit() int {
-	return 5
+// HasKeys reports whether a usable API key is configured.
+func (s *WhiteIntel) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *WhiteIntel) MinInterval() time.Duration {
+	return 200 * time.Millisecond
 }

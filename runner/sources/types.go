@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Source interface {
@@ -23,8 +24,11 @@ type Source interface {
 
 	AddApiKeys([]string)
 
-	// RateLimit returns how many requests per second can be done to the source
-	RateLimit() int
+	// HasKeys reports whether a usable API key is configured
+	HasKeys() bool
+
+	// MinInterval returns the minimum time between two requests to the source
+	MinInterval() time.Duration
 }
 
 // Result represents a single leak result from a source.
@@ -127,8 +131,14 @@ func (r *Result) formatValue(includeDatabase bool) string {
 	if r.URL != "" {
 		parts = append(parts, "url:"+r.URL)
 	}
-	for k, v := range r.Extra {
-		parts = append(parts, k+":"+v)
+	// Extra keys are sorted so the same record always prints the same way.
+	keys := make([]string, 0, len(r.Extra))
+	for k := range r.Extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts = append(parts, k+":"+r.Extra[k])
 	}
 
 	return strings.Join(parts, ", ")
@@ -206,21 +216,6 @@ func (r *Result) HasData() bool {
 		len(r.Extra) > 0
 }
 
-// Contains returns true if any field in the result contains the given substring (case-insensitive).
-func (r *Result) Contains(target string) bool {
-	t := strings.ToLower(target)
-	return strings.Contains(strings.ToLower(r.Email), t) ||
-		strings.Contains(strings.ToLower(r.Username), t) ||
-		strings.Contains(strings.ToLower(r.Password), t) ||
-		strings.Contains(strings.ToLower(r.Hash), t) ||
-		strings.Contains(strings.ToLower(r.Salt), t) ||
-		strings.Contains(strings.ToLower(r.IP), t) ||
-		strings.Contains(strings.ToLower(r.Phone), t) ||
-		strings.Contains(strings.ToLower(r.Name), t) ||
-		strings.Contains(strings.ToLower(r.Database), t) ||
-		strings.Contains(strings.ToLower(r.URL), t)
-}
-
 // CustomTransport wraps http.Transport and adds a default User-Agent header.
 type CustomTransport struct {
 	Transport http.RoundTripper
@@ -233,6 +228,37 @@ type Session struct {
 
 // ScanType is the type of scan performed by the source
 type ScanType int
+
+// String returns the command name of the scan type, e.g. "email".
+func (t ScanType) String() string {
+	switch t {
+	case TypeEmail:
+		return "email"
+	case TypeUsername:
+		return "username"
+	case TypeDomain:
+		return "domain"
+	case TypeKeyword:
+		return "keyword"
+	case TypePhone:
+		return "phone"
+	}
+	return "unknown"
+}
+
+// ScanTypeLimiter is implemented by sources that support only some scan
+// types. Sources without it support them all.
+type ScanTypeLimiter interface {
+	SupportsScanType(ScanType) bool
+}
+
+// SupportsScanType reports whether s can run a scan of type t.
+func SupportsScanType(s Source, t ScanType) bool {
+	if limiter, ok := s.(ScanTypeLimiter); ok {
+		return limiter.SupportsScanType(t)
+	}
+	return true
+}
 
 // Types of available scans performed by the source
 const (

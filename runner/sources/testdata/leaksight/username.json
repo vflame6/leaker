@@ -1,0 +1,3 @@
+{"stealer_json": [{"email": "jane@example.com", "password": "hunter2", "url": "https://shop.example.com"}],
+ "database_url": ["https://dumps.example.net/example.sql"],
+ "bigcomboCombolist": []}

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 )
@@ -73,7 +74,7 @@ func (s *HIBR) fetch(ctx context.Context, session *Session, apiKey, domain strin
 	}
 
 	for page := 1; page <= maxPages; page++ {
-		if page > 1 && !darkEyePause(ctx, s.RateLimit(), s.noDelay) {
+		if page > 1 && !darkEyePause(ctx, s.MinInterval(), s.noDelay) {
 			return records, ctx.Err()
 		}
 
@@ -144,6 +145,9 @@ func (s *HIBR) root() string {
 	return hibrBaseURL
 }
 
+// SupportsScanType reports that HIBR searches by domain only.
+func (s *HIBR) SupportsScanType(t ScanType) bool { return t == TypeDomain }
+
 func (s *HIBR) Name() string {
 	return "hibr"
 }
@@ -160,7 +164,12 @@ func (s *HIBR) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-// RateLimit is a conservative default (one request per second), not a documented limit.
-func (s *HIBR) RateLimit() int {
-	return 1
+// HasKeys reports whether a usable API key is configured.
+func (s *HIBR) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval is a conservative default (one request per second), not a documented limit.
+func (s *HIBR) MinInterval() time.Duration {
+	return time.Second
 }

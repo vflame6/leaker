@@ -1,12 +1,12 @@
 package runner
 
 import (
-	"errors"
 	"fmt"
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
 	"github.com/vflame6/leaker/utils"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,9 +24,10 @@ var (
 type Options struct {
 	DBPath          string // DBPath is the local SQLite cache path (empty = use default)
 	Debug           bool
-	Metadata        bool // Metadata includes metadata fields (database) in output
-	Insecure        bool // Insecure disables TLS certificate verification when true
-	JSON            bool // JSON outputs results as JSONL (one JSON object per line)
+	Metadata        bool   // Metadata includes metadata fields (database) in output
+	Insecure        bool   // Insecure disables TLS certificate verification when true
+	JSON            bool   // JSON outputs results as JSONL (one JSON object per line)
+	ListFile        string // ListFile is the -l/--list file with targets, one per line ("-" reads stdin)
 	ListSources     bool
 	NoColor         bool // NoColor disables colored output
 	NoDeduplication bool // NoDeduplication disables deduplication of results across sources
@@ -40,9 +41,11 @@ type Options struct {
 	Proxy           string
 	Quiet           bool
 	Sources         []string
-	Stdin           bool
-	Targets         string
+	Stdin           bool      // Stdin is true when stdin is piped or redirected, not a terminal
+	StdinReader     io.Reader // StdinReader replaces os.Stdin (tests only)
+	Targets         string    // Targets is the positional target ("-" reads stdin)
 	Timeout         time.Duration
+	Transport       http.RoundTripper // Transport replaces the network transport (tests only)
 	Type            sources.ScanType
 	UserAgent       string
 	Verbose         bool
@@ -87,7 +90,7 @@ func listSources(options *Options) {
 	fmt.Println("Available sources:")
 
 	sorted := make([]sources.Source, len(AllSources))
-	copy(sorted, AllSources[:])
+	copy(sorted, AllSources)
 	slices.SortFunc(sorted, func(a, b sources.Source) int {
 		return strings.Compare(strings.ToLower(a.Name()), strings.ToLower(b.Name()))
 	})
@@ -99,13 +102,6 @@ func listSources(options *Options) {
 		} else {
 			_, _ = fmt.Fprintf(options.Output, "  %s\n", sourceName)
 		}
-	}
-}
-
-// loadProvidersFrom runs the app with source config
-func (options *Options) loadProvidersFrom(location string) {
-	if err := UnmarshalFrom(location); err != nil && (!strings.Contains(err.Error(), "file doesn't exist") || errors.Is(err, os.ErrNotExist)) {
-		logger.Errorf("Could not read providers from %s: %s\n", location, err)
 	}
 }
 

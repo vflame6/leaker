@@ -2,42 +2,10 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"github.com/mattn/go-isatty"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
-
-func ParseTargets(targets string, stdin bool) (io.Reader, error) {
-	var readers []io.Reader
-
-	// Add stdin if piped input is detected
-	if stdin {
-		readers = append(readers, os.Stdin)
-	}
-
-	// Add CLI targets (file path or inline value)
-	if targets != "" {
-		if FileExists(targets) {
-			f, err := os.Open(targets)
-			if err != nil {
-				return nil, err
-			}
-			readers = append(readers, f)
-		} else {
-			// Inline target — add newline so scanner reads it as a complete line
-			readers = append(readers, strings.NewReader(targets+"\n"))
-		}
-	}
-
-	if len(readers) == 0 {
-		return nil, errors.New("no targets provided")
-	}
-
-	return io.MultiReader(readers...), nil
-}
 
 // UserConfigDirOrDefault returns the user config directory or defaultConfigDir in case of error
 func UserConfigDirOrDefault(defaultConfigDir string) string {
@@ -69,38 +37,23 @@ func FileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-func CreateFileWithSafe(filename string, appendToFile bool, overwrite bool) (*os.File, error) {
+// CreateOutputFile creates the -o file, readable by its owner only, and any
+// missing parent directories (mode 0700). An existing file is an error
+// wrapping fs.ErrExist unless overwrite is true; then it is truncated.
+func CreateOutputFile(filename string, overwrite bool) (*os.File, error) {
 	if filename == "" {
 		return nil, errors.New("empty filename")
 	}
-
-	if !overwrite && FileExists(filename) {
-		return nil, fmt.Errorf("file already exists: %s", filename)
-	}
-
-	// create nested directories if they not exist
-	dir := filepath.Dir(filename)
-	if dir != "" {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			err := os.MkdirAll(dir, os.ModePerm)
-			if err != nil {
-				return nil, err
-			}
+	if dir := filepath.Dir(filename); dir != "" {
+		if err := os.MkdirAll(dir, PrivateDirMode); err != nil {
+			return nil, err
 		}
 	}
-
-	var file *os.File
-	var err error
-	if appendToFile {
-		file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	} else {
-		file, err = os.Create(filename)
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if overwrite {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	return file, nil
+	return os.OpenFile(filename, flags, PrivateFileMode)
 }
 
 // HasStdin determines if the user has piped input

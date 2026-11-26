@@ -1,0 +1,4 @@
+{"records": [
+  {"storageid": "st-web", "name": "page.html", "bucket": "web.public", "accesslevel": 0, "type": 1},
+  {"storageid": "st-1", "name": "combo.txt", "bucket": "leaks.public", "accesslevel": 0, "type": 0}
+], "status": 1}

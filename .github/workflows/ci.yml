@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Check out code"
+        uses: actions/checkout@v7
+      - name: "Set up Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: "go vet"
+        run: go vet ./...
+      - name: "golangci-lint"
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15
+
+  test:
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: "Check out code"
+        uses: actions/checkout@v7
+      - name: "Set up Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: "Build"
+        run: go build -o "${{ runner.temp }}/leaker-ci" .
+      - name: "Test with the race detector"
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+      - name: "Test"
+        # The race detector needs cgo, which the Windows runner lacks by default.
+        if: runner.os == 'Windows'
+        run: go test ./...
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Check out code"
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: "Build the image"
+        run: |
+          version="$(git describe --tags --always)"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          docker build --build-arg VERSION="${version}" -t leaker:ci .
+      - name: "The image prints the version it was built for"
+        run: |
+          printed="$(docker run --rm leaker:ci --version)"
+          echo "leaker --version: ${printed}"
+          test "${printed}" = "${VERSION}"

@@ -10,9 +10,7 @@ import (
 	"github.com/vflame6/leaker/runner/sources"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -35,6 +33,7 @@ var CLI struct {
 	} `cmd:"" help:"Search by username."`
 
 	// INPUT
+	List    string   `short:"l" help:"File with targets, one per line (- reads stdin)"`
 	Sources []string `short:"s" default:"online" help:"Sources to use for enumeration. online (default), all, local, or explicit source names."`
 
 	// OPTIMIZATION
@@ -51,7 +50,7 @@ var CLI struct {
 
 	// CONFIGURATION
 	ProviderConfig string `short:"p" help:"Provider config file"`
-	Proxy          string `help:"HTTP proxy to use with leaker"`
+	Proxy          string `help:"Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)"`
 	UserAgent      string `short:"A" help:"Custom user agent"`
 	Insecure       bool   `help:"Disable TLS certificate verification (use with caution)"`
 	DB             string `help:"Path to the local SQLite cache DB"`
@@ -61,7 +60,7 @@ var CLI struct {
 	Version       bool `help:"Print version of leaker"`
 	Quiet         bool `short:"q" help:"Suppress output, print results only"`
 	Verbose       bool `short:"v" help:"Show sources in results output"`
-	Metadata      bool `short:"M" help:"Include metadata fields (database) in output"`
+	Metadata      bool `short:"M" help:"Include metadata fields (database) in plain output; JSON always includes them"`
 	Debug         bool `short:"D" help:"Enable debug mode"`
 	NoColor       bool `help:"Disable colored output"`
 	ListSources   bool `short:"L" help:"List all available sources"`
@@ -76,9 +75,9 @@ func resolveDBPath(flagValue string, getenv func(string) string) string {
 }
 
 func confirmClearDatabase(input io.Reader, output io.Writer, path string) bool {
-	fmt.Fprintf(output, "Clear all rows in the local database at %s? [y/N] ", path)
+	_, _ = fmt.Fprintf(output, "Clear all rows in the local database at %s? [y/N] ", path)
 	answer, _ := bufio.NewReader(input).ReadString('\n')
-	fmt.Fprintln(output)
+	_, _ = fmt.Fprintln(output)
 	return strings.EqualFold(strings.TrimSpace(answer), "y")
 }
 
@@ -105,7 +104,8 @@ func Run() {
 		kong.ConfigureHelp(kong.HelpOptions{
 			Compact: true,
 			Summary: true,
-		}))
+		}),
+		kong.Exit(func(code int) { os.Exit(usageExitCode(code)) }))
 	if err != nil {
 		panic(err)
 	}
@@ -201,6 +201,7 @@ func Run() {
 		Debug:           CLI.Debug,
 		Insecure:        CLI.Insecure,
 		JSON:            CLI.JSON,
+		ListFile:        CLI.List,
 		ListSources:     CLI.ListSources,
 		NoColor:         CLI.NoColor,
 		NoDeduplication: CLI.NoDeduplication,
@@ -224,16 +225,24 @@ func Run() {
 		NoWriteDB:       noWriteDB,
 	}
 
-	runCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	runCtx, stop := signalContext()
+	code := run(runCtx, options)
+	stop()
+	os.Exit(code)
+}
 
+// run performs the scan and returns the process exit code.
+func run(ctx context.Context, options *runner.Options) int {
 	r, err := runner.NewRunner(options)
-	if err != nil {
-		logger.Fatal(err)
+	if err == nil {
+		err = r.RunEnumeration(ctx)
+		if closeErr := r.Close(); closeErr != nil {
+			logger.Errorf("could not close the local database: %s", closeErr)
+		}
 	}
-
-	err = r.RunEnumeration(runCtx)
-	if err != nil {
-		logger.Fatal(err)
+	code := exitCode(err)
+	if err != nil && code != ExitInterrupted {
+		logger.Failf("%s", err)
 	}
+	return code
 }

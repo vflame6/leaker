@@ -2,21 +2,26 @@ package runner
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha1"
+	"errors"
 	"fmt"
-	"github.com/vflame6/leaker/runner/sources"
-	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vflame6/leaker/runner/sources"
 )
 
-// Verifier enriches results with HIBP password breach counts and hash type identification.
+// Verifier enriches results with HIBP password breach counts and hash type
+// identification. One Verifier serves a whole run, so its caches span
+// targets, and it sends requests through the run's session (proxy included).
 type Verifier struct {
-	client     *http.Client
+	session    *sources.Session
 	enabled    bool
 	hashCache  map[string]int      // full SHA1 hex → breach count
 	rangeCache map[string][]string // 5-char prefix → suffix:count lines
@@ -25,27 +30,31 @@ type Verifier struct {
 }
 
 // NewVerifier creates a new Verifier. When enabled is false, EnrichResult is a no-op.
-func NewVerifier(enabled bool) *Verifier {
+func NewVerifier(enabled bool, session *sources.Session) *Verifier {
 	return &Verifier{
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		session:    session,
 		enabled:    enabled,
 		hashCache:  make(map[string]int),
 		rangeCache: make(map[string][]string),
 	}
 }
 
-// EnrichResult enriches a Result in-place with verification signals.
-func (v *Verifier) EnrichResult(result *sources.Result) {
-	if !v.enabled {
+// EnrichResult enriches a Result in-place with verification signals. A failed
+// HIBP lookup sets hibp_error instead of hibp_count, so it never reads as
+// "not breached".
+func (v *Verifier) EnrichResult(ctx context.Context, result *sources.Result) {
+	if v == nil || !v.enabled {
 		return
 	}
 
 	// HIBP Password Check
 	if result.Password != "" {
-		count := v.hibpCount(result.Password)
-		result.SetExtra("hibp_count", fmt.Sprintf("%d", count))
+		count, err := v.hibpCount(ctx, result.Password)
+		if err != nil {
+			result.SetExtra("hibp_error", err.Error())
+		} else {
+			result.SetExtra("hibp_count", strconv.Itoa(count))
+		}
 	}
 
 	// Hash Format Identification
@@ -56,14 +65,15 @@ func (v *Verifier) EnrichResult(result *sources.Result) {
 
 // hibpCount returns the number of times the password appears in the HIBP breach corpus.
 // Uses k-anonymity: only the first 5 hex characters of the SHA-1 hash are sent.
-func (v *Verifier) hibpCount(password string) int {
+// Failed lookups are not cached.
+func (v *Verifier) hibpCount(ctx context.Context, password string) (int, error) {
 	h := sha1.Sum([]byte(password))
 	fullHash := fmt.Sprintf("%X", h[:]) // uppercase hex
 
 	v.mu.Lock()
 	if count, ok := v.hashCache[fullHash]; ok {
 		v.mu.Unlock()
-		return count
+		return count, nil
 	}
 	v.mu.Unlock()
 
@@ -83,12 +93,14 @@ func (v *Verifier) hibpCount(password string) int {
 		v.mu.Unlock()
 		// Fetch from HIBP
 		var fetchErr error
-		lines, fetchErr = v.fetchHIBPRange(prefix)
+		lines, fetchErr = v.fetchHIBPRange(ctx, prefix)
 		v.mu.Lock()
 		v.lastReq = time.Now()
-		if fetchErr == nil {
-			v.rangeCache[prefix] = lines
+		if fetchErr != nil {
+			v.mu.Unlock()
+			return 0, fetchErr
 		}
+		v.rangeCache[prefix] = lines
 	}
 	v.mu.Unlock()
 
@@ -115,22 +127,25 @@ func (v *Verifier) hibpCount(password string) int {
 	v.hashCache[fullHash] = count
 	v.mu.Unlock()
 
-	return count
+	return count, nil
 }
 
 // fetchHIBPRange queries the HIBP Passwords API for the given 5-char SHA-1 prefix.
-func (v *Verifier) fetchHIBPRange(prefix string) ([]string, error) {
-	url := fmt.Sprintf("https://api.pwnedpasswords.com/range/%s", prefix)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (v *Verifier) fetchHIBPRange(ctx context.Context, prefix string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.pwnedpasswords.com/range/"+prefix, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Add-Padding", "true")
-	req.Header.Set("User-Agent", "leaker")
 
-	resp, err := v.client.Do(req)
+	resp, err := v.session.Do(req)
 	if err != nil {
-		return nil, err
+		// Keep the cause; the URL only repeats the hash prefix.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return nil, fmt.Errorf("HIBP lookup failed: %w", urlErr.Err)
+		}
+		return nil, fmt.Errorf("HIBP lookup failed: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -145,8 +160,8 @@ func (v *Verifier) fetchHIBPRange(prefix string) ([]string, error) {
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	if err := scanner.Err(); err != nil && err != io.EOF {
-		return lines, err
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("HIBP response could not be read: %w", err)
 	}
 	return lines, nil
 }

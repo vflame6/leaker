@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -59,7 +62,7 @@ func (s *Snusbase) snusbasePost(ctx context.Context, session *Session, apiKey, u
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +74,7 @@ func (s *Snusbase) snusbasePost(ctx context.Context, session *Session, apiKey, u
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Snusbase %s returned status %d: %s", url, resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("Snusbase %s returned status %d: %s", url, resp.StatusCode, errorBody(respBody, apiKey))
 	}
 
 	return respBody, nil
@@ -126,7 +129,9 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 		hashSet := make(map[string]bool)
 		ipSet := make(map[string]bool)
 
-		for dbName, records := range searchResp.Results {
+		// Map order is random; sort so the same response always prints the same way.
+		for _, dbName := range slices.Sorted(maps.Keys(searchResp.Results)) {
+			records := searchResp.Results[dbName]
 			for _, record := range records {
 				r := Result{
 					Source:   s.Name(),
@@ -177,7 +182,8 @@ func (s *Snusbase) Run(ctx context.Context, target string, scanType ScanType, se
 		} else {
 			var comboResp snusbaseSearchResponse
 			if err := json.Unmarshal(comboBody, &comboResp); err == nil {
-				for dbName, records := range comboResp.Results {
+				for _, dbName := range slices.Sorted(maps.Keys(comboResp.Results)) {
+					records := comboResp.Results[dbName]
 					for _, record := range records {
 						r := Result{
 							Source:   s.Name(),
@@ -317,6 +323,12 @@ func (s *Snusbase) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *Snusbase) RateLimit() int {
-	return 2
+// HasKeys reports whether a usable API key is configured.
+func (s *Snusbase) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *Snusbase) MinInterval() time.Duration {
+	return 500 * time.Millisecond
 }

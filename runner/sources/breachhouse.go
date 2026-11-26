@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 )
@@ -107,6 +108,9 @@ func (s *BreachHouse) root() string {
 	return breachHouseBaseURL
 }
 
+// SupportsScanType reports that Breach House searches by domain only.
+func (s *BreachHouse) SupportsScanType(t ScanType) bool { return t == TypeDomain }
+
 func (s *BreachHouse) Name() string {
 	return "breachhouse"
 }
@@ -123,7 +127,12 @@ func (s *BreachHouse) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-// RateLimit is a conservative default (one request per second), not a documented limit.
-func (s *BreachHouse) RateLimit() int {
-	return 1
+// HasKeys reports whether a usable API key is configured.
+func (s *BreachHouse) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval is a conservative default (one request per second), not a documented limit.
+func (s *BreachHouse) MinInterval() time.Duration {
+	return time.Second
 }

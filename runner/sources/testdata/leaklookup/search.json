@@ -1,0 +1,5 @@
+{"error": "false", "message": {
+  "zeta.com": [{"email_address": "jane@example.com", "password": "hunter2", "username": "jane"}],
+  "alpha.org": [{"email": "jane@example.com", "hash": "5f4dcc3b5aa765d61d8327deb882cf99", "ip_address": "203.0.113.9", "fullname": "Jane Doe"}],
+  "mid.net": []
+}}

@@ -1,0 +1,4 @@
+{"sources": [
+  {"id_source": "hibr-1", "leak_type": "ransomware_leak", "post_title": "Example Corp", "website": "www.example.com", "group_name": "akira", "country": "DE", "discovered": "2024-05-02 08:00:00"},
+  {"id_source": "hibr-2", "leak_type": "traditional_breach", "name": "Example 2022 breach", "website": "", "discovered": "2022-01-15"}
+], "has_next": false}

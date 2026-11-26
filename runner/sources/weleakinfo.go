@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -84,7 +85,7 @@ func (s *WeLeakInfo) Run(ctx context.Context, target string, scanType ScanType, 
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in WeLeakInfo source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -101,7 +102,7 @@ func (s *WeLeakInfo) Run(ctx context.Context, target string, scanType ScanType, 
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("WeLeakInfo returned status %d: %s", resp.StatusCode, string(respBody)),
+				Error:  fmt.Errorf("WeLeakInfo returned status %d: %s", resp.StatusCode, errorBody(respBody, append(s.apiKeys, bearerToken)...)),
 			}
 			return
 		}
@@ -160,6 +161,12 @@ func (s *WeLeakInfo) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *WeLeakInfo) RateLimit() int {
-	return 5
+// HasKeys reports whether a usable API key is configured.
+func (s *WeLeakInfo) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *WeLeakInfo) MinInterval() time.Duration {
+	return 200 * time.Millisecond
 }

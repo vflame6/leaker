@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -90,7 +91,7 @@ func (s *DeHashed) Run(ctx context.Context, target string, scanType ScanType, se
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in DeHashed source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -107,7 +108,7 @@ func (s *DeHashed) Run(ctx context.Context, target string, scanType ScanType, se
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("DeHashed returned status %d: %s", resp.StatusCode, string(respBody)),
+				Error:  fmt.Errorf("DeHashed returned status %d: %s", resp.StatusCode, errorBody(respBody, s.apiKeys...)),
 			}
 			return
 		}
@@ -155,6 +156,12 @@ func (s *DeHashed) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *DeHashed) RateLimit() int {
-	return 10
+// HasKeys reports whether a usable API key is configured.
+func (s *DeHashed) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *DeHashed) MinInterval() time.Duration {
+	return 100 * time.Millisecond
 }

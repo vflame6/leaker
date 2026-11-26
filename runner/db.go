@@ -19,6 +19,7 @@ import (
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/runner/sources"
+	"github.com/vflame6/leaker/utils"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 )
@@ -121,11 +122,20 @@ func OpenLeakerDB(path string, writable bool) (*LeakerDB, error) {
 			// callers treat this as "DB unavailable".
 			return nil, nil
 		}
-		// Create parent directory if needed.
+		// The DB holds leaked credentials: only the user may read it.
+		// Create the file before SQLite does, so it gets mode 0600; SQLite
+		// gives the -wal and -shm files the database file's mode.
 		if dir := filepath.Dir(path); dir != "" {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := os.MkdirAll(dir, utils.PrivateDirMode); err != nil {
 				return nil, fmt.Errorf("create DB parent dir: %w", err)
 			}
+		}
+		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, utils.PrivateFileMode)
+		if err != nil {
+			return nil, fmt.Errorf("create DB file: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("create DB file: %w", err)
 		}
 	}
 
@@ -453,23 +463,26 @@ func searchColumnsFor(scanType sources.ScanType) []string {
 
 // buildSearchQuery assembles the SELECT + WHERE clause for a given set of
 // columns and target. Uses LOWER(col) LIKE LOWER(?) for explicit
-// unicode-aware case-insensitive matching; the target is wrapped as
-// %target% once and bound once per column.
+// case-insensitive matching; the target is wrapped as %target% once and
+// bound once per column. LIKE wildcards in the target match literally.
 func buildSearchQuery(cols []string, target string) (string, []any) {
 	query := `SELECT checksum, source, email, username, password, hash, salt, ip, phone, name, database, url, extra
   FROM leaks
  WHERE `
-	pattern := "%" + target + "%"
+	pattern := "%" + likeEscaper.Replace(target) + "%"
 	args := make([]any, 0, len(cols))
 	for i, col := range cols {
 		if i > 0 {
 			query += " OR "
 		}
-		query += "LOWER(" + col + ") LIKE LOWER(?)"
+		query += "LOWER(" + col + `) LIKE LOWER(?) ESCAPE '\'`
 		args = append(args, pattern)
 	}
 	return query, args
 }
+
+// likeEscaper escapes the LIKE wildcards % and _ and the escape character.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // encodeExtra serializes Result.Extra as JSON with sorted keys so the
 // encoding is deterministic (and therefore the checksum stable).

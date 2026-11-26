@@ -1,0 +1,4 @@
+{"took": 1.2, "size": 2, "results": {
+  "ZETA_COM": [{"email": "jane@example.com", "username": "jane", "hash": "5f4dcc3b5aa765d61d8327deb882cf99", "lastip": "203.0.113.8"}],
+  "ALPHA_ORG": [{"email": "jane@example.com", "password": "hunter2", "name": "Jane Doe", "salt": "x1"}]
+}}

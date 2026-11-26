@@ -1,0 +1,4 @@
+{"success": true, "found": 2, "result": [
+  {"email": "jane@example.com", "password": "hunter2", "sha1": "f3bbbd66a63d4bf1747940578ec3d0103530e21d", "hash": "", "sources": "Example Breach 2019"},
+  {"email": "jane@example.com", "password": "", "sha1": "", "hash": "5f4dcc3b5aa765d61d8327deb882cf99", "sources": "Unknown"}
+]}

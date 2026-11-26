@@ -1,11 +1,14 @@
 package runner
 
 import (
-	"github.com/vflame6/leaker/logger"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/vflame6/leaker/logger"
+	"github.com/vflame6/leaker/runner/sources"
+	"github.com/vflame6/leaker/utils"
+	"gopkg.in/yaml.v3"
 )
 
 // createProviderConfigYAML marshals the input map to the given location on the disk
@@ -13,14 +16,12 @@ func createProviderConfigYAML(configFilePath string) error {
 	// Define the full path for the file
 	dir := filepath.Dir(configFilePath)
 
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		// Recursively create all necessary directories
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
+	// The file holds API keys: only the user may read it.
+	if err := os.MkdirAll(dir, utils.PrivateDirMode); err != nil {
+		return err
 	}
 
-	configFile, err := os.Create(configFilePath)
+	configFile, err := os.OpenFile(configFilePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, utils.PrivateFileMode)
 	if err != nil {
 		return err
 	}
@@ -41,24 +42,30 @@ func createProviderConfigYAML(configFilePath string) error {
 	return yaml.NewEncoder(configFile).Encode(sourcesRequiringApiKeysMap)
 }
 
-// UnmarshalFrom writes the marshaled yaml config to disk
-func UnmarshalFrom(file string) error {
-	reader, err := os.Open(file)
+// loadProviderKeys reads the provider config at path and gives each source in
+// srcs the keys listed under its name.
+func loadProviderKeys(path string, srcs []sources.Source) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-
-	sourceApiKeysMap := map[string][]string{}
-	err = yaml.NewDecoder(reader).Decode(sourceApiKeysMap)
-	for _, source := range AllSources {
-		sourceName := strings.ToLower(source.Name())
-		apiKeys := sourceApiKeysMap[sourceName]
+	keys := map[string][]string{}
+	if err := yaml.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	for _, source := range srcs {
+		name := strings.ToLower(source.Name())
+		// Blank entries are placeholders, not keys.
+		var apiKeys []string
+		for _, key := range keys[name] {
+			if key = strings.TrimSpace(key); key != "" {
+				apiKeys = append(apiKeys, key)
+			}
+		}
 		if len(apiKeys) > 0 {
-			logger.Debugf("API key(s) found for %s.", sourceName)
+			logger.Debugf("API key(s) found for %s.", name)
 			source.AddApiKeys(apiKeys)
-		} else if source.NeedsKey() {
-			logger.Debugf("Cannot use the %s source because there is no API key/secret defined for it.", sourceName)
 		}
 	}
-	return err
+	return nil
 }

@@ -37,3 +37,6 @@ CLAUDE.md
 .claude/
 docs/
 
+
+# GoReleaser output
+dist/

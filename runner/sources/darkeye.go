@@ -145,14 +145,14 @@ func send(ctx context.Context, results chan<- Result, r Result) bool {
 }
 
 // darkEyePause waits between two requests to respect the rate limit.
-func darkEyePause(ctx context.Context, rateLimit int, noDelay bool) bool {
+func darkEyePause(ctx context.Context, interval time.Duration, noDelay bool) bool {
 	if noDelay {
 		return ctx.Err() == nil
 	}
 	select {
 	case <-ctx.Done():
 		return false
-	case <-time.After(time.Second / time.Duration(rateLimit)):
+	case <-time.After(interval):
 		return true
 	}
 }
@@ -176,14 +176,14 @@ func darkEyeGet(ctx context.Context, session *Session, product, endpoint, apiKey
 	req.Header.Set("Accept", "application/json")
 
 	logger.Debugf("Sending a request to %s", product)
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
 		return nil, fmt.Errorf("%s request failed: %s", product, darkEyeRedact(err.Error(), keys))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read one byte beyond the limit so an oversized response is detected rather
 	// than silently truncated. The deferred close avoids draining any excess.
@@ -235,10 +235,16 @@ func darkEyeRecordToResult(source string, keyedByDomain bool, record darkEyeReco
 		Database: title,
 		URL:      website,
 	}
-	if keyedByDomain && !strings.Contains(strings.ToLower(website), domain) {
+	if keyedByDomain && !withinDomain(urlHost(website), domain) {
 		r.URL = domain
 		if website != "" {
 			r.SetExtra("website", website)
+		}
+	}
+	// A listing named after a domain, without a website, is about that domain.
+	if r.URL == "" {
+		if host, ok := normalizeDarkEyeDomain(title); ok {
+			r.URL = host
 		}
 	}
 	if r.Database == "" && r.URL == "" {

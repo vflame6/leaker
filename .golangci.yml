@@ -11,13 +11,12 @@ linters:
     - ineffassign
     - unused
     - gocritic
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
 
 formatters:
   enable:
     - gofmt
-
-issues:
-  exclude-rules:
-    - path: ".*_test\\.go"
-      linters:
-        - errcheck

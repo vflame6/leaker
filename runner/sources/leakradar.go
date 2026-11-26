@@ -204,7 +204,7 @@ func (s *LeakRadar) searchPages(
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(time.Second / time.Duration(s.RateLimit())):
+		case <-time.After(s.MinInterval()):
 		}
 	}
 
@@ -212,7 +212,7 @@ func (s *LeakRadar) searchPages(
 }
 
 func (s *LeakRadar) doSearch(session *Session, req *http.Request) (leakRadarSearchResponse, error) {
-	resp, err := session.Client.Do(req)
+	resp, err := session.Do(req)
 	if err != nil {
 		return leakRadarSearchResponse{}, err
 	}
@@ -225,7 +225,7 @@ func (s *LeakRadar) doSearch(session *Session, req *http.Request) (leakRadarSear
 	logger.Debugf("Response from LeakRadar source: status code [%d], size [%d]", resp.StatusCode, len(body))
 
 	if resp.StatusCode != http.StatusOK {
-		return leakRadarSearchResponse{}, fmt.Errorf("LeakRadar returned status %d: %s", resp.StatusCode, string(body))
+		return leakRadarSearchResponse{}, fmt.Errorf("LeakRadar returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...))
 	}
 
 	var response leakRadarSearchResponse
@@ -306,6 +306,12 @@ func (s *LeakRadar) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *LeakRadar) RateLimit() int {
-	return 5
+// HasKeys reports whether a usable API key is configured.
+func (s *LeakRadar) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *LeakRadar) MinInterval() time.Duration {
+	return 200 * time.Millisecond
 }

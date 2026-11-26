@@ -1,3 +1,13 @@
+version: 2
+
 builds:
-  - ldflags:
+  - env:
+      - CGO_ENABLED=0
+    ldflags:
       - -s -w -X github.com/vflame6/leaker/cmd.VERSION={{.Tag}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]

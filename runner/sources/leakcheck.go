@@ -8,6 +8,8 @@ import (
 	"github.com/vflame6/leaker/utils"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 )
 
 type LeakCheck struct {
@@ -29,24 +31,27 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			return
 		}
 
-		var url string
 		var response map[string]interface{}
 
+		var searchType string
 		switch scanType {
 		case TypeEmail:
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=email", target)
+			searchType = "email"
 		case TypeUsername:
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=username", target)
+			searchType = "username"
 		case TypeDomain:
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=domain", target)
+			searchType = "domain"
 		case TypeKeyword:
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=keyword", target)
+			searchType = "keyword"
 		case TypePhone:
-			url = fmt.Sprintf("https://leakcheck.io/api/v2/query/%s?type=phone", target)
+			searchType = "phone"
 		}
+		query := url.Values{}
+		query.Set("type", searchType)
+		endpoint := "https://leakcheck.io/api/v2/query/" + url.PathEscape(target) + "?" + query.Encode()
 
 		// prepare request with custom headers
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
@@ -59,7 +64,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 
 		// perform the request
 		logger.Debugf("Sending a request in LeakCheck source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{
 				Source: s.Name(),
@@ -92,7 +97,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if !ok || !success {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
+				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -100,7 +105,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 		if !ok {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
+				Error:  fmt.Errorf("failed to parse LeakCheck response: %s", errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -110,7 +115,7 @@ func (s *LeakCheck) Run(ctx context.Context, target string, scanType ScanType, s
 			if !ok {
 				results <- Result{
 					Source: s.Name(),
-					Error:  fmt.Errorf("failed to parse LeakCheck response: %s", string(body)),
+					Error:  fmt.Errorf("failed to parse LeakCheck response: %s", errorBody(body, s.apiKeys...)),
 				}
 				return
 			}
@@ -188,9 +193,13 @@ func (s *LeakCheck) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *LeakCheck) RateLimit() int {
-	// from https://wiki.leakcheck.io/en/api/api-v2-pro
-	// "By default, the LeakCheck Pro API is limited to 3 requests per second on any plan.
-	// You can increase this limit in the settings."
-	return 3
+// HasKeys reports whether a usable API key is configured.
+func (s *LeakCheck) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval follows https://wiki.leakcheck.io/en/api/api-v2-pro:
+// "By default, the LeakCheck Pro API is limited to 3 requests per second on any plan."
+func (s *LeakCheck) MinInterval() time.Duration {
+	return time.Second / 3
 }

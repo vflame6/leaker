@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -79,12 +81,20 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 			searchType = "phone"
 		}
 
-		url := fmt.Sprintf(
-			"https://osintleak.com/api/v1/search_api/?api_key=%s&query=%s&type=%s&stealerlogs=true&dbleaks=true&dbleaks2=true&page=1&page_size=100",
-			randomApiKey, target, searchType,
-		)
+		// The API only takes the key in the query string; Session.Do keeps
+		// it out of errors and logs.
+		query := url.Values{}
+		query.Set("api_key", randomApiKey)
+		query.Set("query", target)
+		query.Set("type", searchType)
+		query.Set("stealerlogs", "true")
+		query.Set("dbleaks", "true")
+		query.Set("dbleaks2", "true")
+		query.Set("page", "1")
+		query.Set("page_size", "100")
+		endpoint := "https://osintleak.com/api/v1/search_api/?" + query.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -92,7 +102,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in OSINTLeak source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -109,7 +119,7 @@ func (s *OSINTLeak) Run(ctx context.Context, target string, scanType ScanType, s
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("OSINTLeak returned status %d: %s", resp.StatusCode, string(body)),
+				Error:  fmt.Errorf("OSINTLeak returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -241,6 +251,12 @@ func (s *OSINTLeak) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *OSINTLeak) RateLimit() int {
-	return 2
+// HasKeys reports whether a usable API key is configured.
+func (s *OSINTLeak) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *OSINTLeak) MinInterval() time.Duration {
+	return 500 * time.Millisecond
 }

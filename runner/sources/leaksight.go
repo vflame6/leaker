@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/vflame6/leaker/logger"
 	"github.com/vflame6/leaker/utils"
@@ -41,10 +43,14 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 			endpoint = "number"
 		}
 
-		url := fmt.Sprintf("https://api.leaksight.com/osint/%s?token=%s&text=%s",
-			endpoint, randomApiKey, target)
+		// The API only takes the token in the query string; Session.Do
+		// keeps it out of errors and logs.
+		query := url.Values{}
+		query.Set("token", randomApiKey)
+		query.Set("text", target)
+		requestURL := "https://api.leaksight.com/osint/" + endpoint + "?" + query.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -52,7 +58,7 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 		req.Header.Set("Accept", "application/json")
 
 		logger.Debugf("Sending a request in LeakSight source for %s", target)
-		resp, err := session.Client.Do(req)
+		resp, err := session.Do(req)
 		if err != nil {
 			results <- Result{Source: s.Name(), Error: err}
 			return
@@ -69,7 +75,7 @@ func (s *LeakSight) Run(ctx context.Context, target string, scanType ScanType, s
 		if resp.StatusCode != http.StatusOK {
 			results <- Result{
 				Source: s.Name(),
-				Error:  fmt.Errorf("LeakSight returned status %d: %s", resp.StatusCode, string(body)),
+				Error:  fmt.Errorf("LeakSight returned status %d: %s", resp.StatusCode, errorBody(body, s.apiKeys...)),
 			}
 			return
 		}
@@ -172,6 +178,12 @@ func (s *LeakSight) AddApiKeys(keys []string) {
 	s.apiKeys = keys
 }
 
-func (s *LeakSight) RateLimit() int {
-	return 2
+// HasKeys reports whether a usable API key is configured.
+func (s *LeakSight) HasKeys() bool {
+	return len(s.apiKeys) > 0
+}
+
+// MinInterval returns the minimum time between two requests to the source.
+func (s *LeakSight) MinInterval() time.Duration {
+	return 500 * time.Millisecond
 }

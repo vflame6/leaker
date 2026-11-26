@@ -1,0 +1,6 @@
+{
+  "ransomware": [{"victim_id": 101, "post_title": "Example Corp", "website": "example.com", "group_name": "lockbit", "country": "US", "discovered": "2024-03-01T10:00:00Z"}],
+  "breaches": {"results": [{"id": "b-7", "name": "Example.com forum dump", "website": "https://forum.example.com", "discovered": "2023-11-20"}]},
+  "leads": [],
+  "stealers": []
+}

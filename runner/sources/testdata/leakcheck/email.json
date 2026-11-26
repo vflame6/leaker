@@ -1,0 +1,4 @@
+{"success": true, "found": 2, "quota": 400, "result": [
+  {"email": "jane@example.com", "source": {"name": "Example.com", "breach_date": "2019-05"}, "password": "hunter2", "username": "jane", "first_name": "Jane", "last_name": "Doe", "dob": "1990-01-01", "fields": ["email", "password", "username", "first_name", "last_name", "dob"]},
+  {"email": "jane@example.com", "source": {"name": "Unknown"}, "rdomain": "example.com", "fields": ["email", "rdomain"]}
+]}

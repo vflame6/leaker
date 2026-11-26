@@ -1,0 +1,4 @@
+{"items": [
+  {"id": "lr-1", "url": "https://login.example.com", "username": "jane@example.com", "password": "hunter2", "password_strength": 2, "unlocked": true, "is_email": true, "added_at": "2024-01-02", "status": "new", "category": "stealer"},
+  {"id": "lr-2", "url": "https://x.example.com", "username": "j***@example.com", "password": "", "unlocked": false}
+], "total": 2, "page": 1, "page_size": 100}

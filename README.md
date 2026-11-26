@@ -36,7 +36,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 - **Deduplication** - removes duplicate results across sources
 - **JSONL output** - structured output for pipelines (`-j`)
 - **Rate limiting** - built-in per-source rate limits (disable with `-N`)
-- **Proxy support** - route traffic through HTTP proxy (`--proxy`)
+- **Proxy support** - route all traffic through a proxy (`--proxy`, or `HTTPS_PROXY` from the environment)
 - **Multiple API keys** - load balancing across keys per source
 
 ### Available sources
@@ -74,6 +74,7 @@ Usage: leaker <command> [flags]
 
 Flags:
   -h, --help                      Show context-sensitive help.
+  -l, --list=STRING               File with targets, one per line (- reads stdin)
   -s, --sources=online,...        Sources to use for enumeration. 
                                   online (default), all, local, or explicit source names.
   --timeout=30s                   Seconds to wait on each request before timing out
@@ -85,7 +86,7 @@ Flags:
   --overwrite                     Force overwrite of existing output file
   -V, --verify                    Verify credentials using HIBP password check and hash identification
   -p, --provider-config=STRING    Provider config file
-  --proxy=STRING                  HTTP proxy to use with leaker
+  --proxy=STRING                  Proxy URL for every request (default: HTTP_PROXY/HTTPS_PROXY from the environment)
   -A, --user-agent=STRING         Custom user agent
   --insecure                      Disable TLS certificate verification (use with caution)
   --db=STRING                     Path to the local SQLite cache DB
@@ -93,7 +94,7 @@ Flags:
   --version                       Print version of leaker
   -q, --quiet                     Suppress output, print results only
   -v, --verbose                   Show sources in results output
-  -M, --metadata                  Include metadata fields (database) in output
+  -M, --metadata                  Include metadata fields (database) in plain output; JSON always includes them
   -D, --debug                     Enable debug mode
   --no-color                      Disable colored output
   -L, --list-sources              List all available sources
@@ -111,9 +112,29 @@ Commands:
 
 Learn more about Leaker's options here: https://github.com/vflame6/leaker/wiki/Usage
 
+### Targets
+
+```shell
+leaker email jane@example.com           # one target
+leaker email -l emails.txt              # one target per line
+cat emails.txt | leaker email           # targets on stdin
+cat emails.txt | leaker email -         # "-" reads stdin explicitly
+```
+
+If the target names an existing file (`leaker email emails.txt`), leaker reads targets from it, one per line, like `-l`. Stdin is read only when no target or list is given, or when the target (or `-l`) is `-`.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | The search ran (with or without leaks) |
+| 1 | Runtime error, including a target that no source could search (for example, every request failed) |
+| 2 | Usage or configuration error, nothing was searched: no valid target, a source named with `-s` without an API key or unable to run that search type |
+| 130 | Interrupted (Ctrl+C or SIGTERM); a second Ctrl+C exits at once |
+
 ## Installation
 
-`leaker` requires **go1.24** to install successfully. Run the following command to install the latest version:
+`leaker` requires **go1.26** (the version in `go.mod`) to install successfully. Run the following command to install the latest version:
 
 ```shell
 go install -v github.com/vflame6/leaker@latest
