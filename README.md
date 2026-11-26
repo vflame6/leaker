@@ -6,7 +6,6 @@
 <h4 align="center">Passive leak enumeration tool.</h4>
 
 <p align="center">
-<a href="https://goreportcard.com/report/github.com/vflame6/leaker" target="_blank"><img src="https://goreportcard.com/badge/github.com/vflame6/leaker"></a>
 <a href="https://github.com/vflame6/leaker/issues"><img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat"></a>
 <a href="https://github.com/vflame6/leaker/releases"><img src="https://img.shields.io/github/release/vflame6/leaker"></a>
 <a href="https://t.me/vflame6"><img src="https://img.shields.io/badge/Follow-@vflame6-33a3e1?style=flat&logo=telegram"></a>
@@ -111,26 +110,6 @@ Commands:
 ```
 
 Learn more about Leaker's options here: https://github.com/vflame6/leaker/wiki/Usage
-
-### Targets
-
-```shell
-leaker email jane@example.com           # one target
-leaker email -l emails.txt              # one target per line
-cat emails.txt | leaker email           # targets on stdin
-cat emails.txt | leaker email -         # "-" reads stdin explicitly
-```
-
-If the target names an existing file (`leaker email emails.txt`), leaker reads targets from it, one per line, like `-l`. Stdin is read only when no target or list is given, or when the target (or `-l`) is `-`.
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | The search ran (with or without leaks) |
-| 1 | Runtime error, including a target that no source could search (for example, every request failed) |
-| 2 | Usage or configuration error, nothing was searched: no valid target, a source named with `-s` without an API key or unable to run that search type |
-| 130 | Interrupted (Ctrl+C or SIGTERM); a second Ctrl+C exits at once |
 
 ## Installation
 
