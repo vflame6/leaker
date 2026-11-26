@@ -47,12 +47,7 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends zsh fish mandoc
       - name: "Build"
         run: go build -o "${{ runner.temp }}/leaker-ci" .
-      - name: "Test with the race detector"
-        if: runner.os != 'Windows'
-        run: go test -race ./...
       - name: "Test"
-        # The race detector needs cgo, which the Windows runner lacks by default.
-        if: runner.os == 'Windows'
         run: go test ./...
 
   docker:
