@@ -6,8 +6,9 @@
 <h4 align="center">Passive leak enumeration tool.</h4>
 
 <p align="center">
-<a href="https://github.com/vflame6/leaker/issues"><img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat"></a>
 <a href="https://github.com/vflame6/leaker/releases"><img src="https://img.shields.io/github/release/vflame6/leaker"></a>
+<a href="https://github.com/vflame6/leaker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/vflame6/leaker"></a>
+<a href="https://github.com/vflame6/leaker/issues"><img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat"></a>
 <a href="https://t.me/vflame6"><img src="https://img.shields.io/badge/Follow-@vflame6-33a3e1?style=flat&logo=telegram"></a>
 </p>
 
@@ -43,13 +44,13 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 
 | Source | API Key | Search Types | Pricing             |
 |--------|---------|-------------|---------------------|
-| [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free via RapidAPI   |
+| [BreachDirectory](https://breachdirectory.org/) | Yes | all (auto-detect) | Free / Paid   |
 | [Breach House](https://breach.house/) | Yes | domain | Paid                |
 | [DeHashed](https://dehashed.com/) | Yes | email, username, domain, keyword, phone | Paid                |
-| [Flare](https://flare.io/) | Yes | email, domain | ASTP licence        |
+| [Flare](https://flare.io/) | Yes | email, domain | Paid        |
 | [Have I Been Ransomed?](https://haveibeenransom.com/) | Yes | domain | Paid                |
 | [Hudson Rock](https://hudsonrock.com/) | No | email, username, domain | Free / Paid         |
-| [Intelligence X](https://intelx.io/) | Yes | all | Free tier available |
+| [Intelligence X](https://intelx.io/) | Yes | all | Free / Paid |
 | [LeakCheck](https://leakcheck.io/?ref=486555) | Yes | email, username, domain, keyword, phone | Paid                |
 | [LeakRadar](https://leakradar.io/) | Yes | email, username, domain | Paid                |
 | [Leak-Lookup](https://leak-lookup.com/) | Yes | email, username, domain, phone | Paid                |
@@ -57,7 +58,7 @@ Created by Maksim Radaev/[@vflame6](https://github.com/vflame6)
 | [OSINTLeak](https://app.osintleak.com/auth/signup?referral_code=FLAME6) | Yes | email, username, domain, phone | Paid                |
 | [ProxyNova](https://www.proxynova.com/tools/comb) | No | all | Free                |
 | [Snusbase](https://snusbase.com/) | Yes | email, username, domain | Paid                |
-| [SpyCloud](https://spycloud.com/) | Yes | email, username, domain, phone | Enterprise licence  |
+| [SpyCloud](https://spycloud.com/) | Yes | email, username, domain, phone | Paid  |
 | [WeLeakInfo](https://weleakinfo.io/) | Yes | email, username, domain | Paid                |
 | [WhiteIntel](https://whiteintel.io/) | Yes | email, username, domain | Paid                |
 
@@ -126,26 +127,26 @@ Learn more about Leaker's options here: https://github.com/vflame6/leaker/wiki/U
 
 Download an archive for your platform from [Releases](https://github.com/vflame6/leaker/releases), or install with one of:
 
-### Go 1.26 or later
+Go 1.26 or later:
 
 ```
 go install -v github.com/vflame6/leaker@latest
 ```
 
-### Homebrew, macOS and Linux
+Homebrew, macOS and Linux:
 
 ```shell
 brew tap vflame6/leaker https://github.com/vflame6/leaker
 brew install --cask vflame6/leaker/leaker
 ```
 
-### Docker
+Docker:
 
 ```shell
 docker run --rm -v leaker:/home/app ghcr.io/vflame6/leaker email jane@example.com
 ```
 
-### Linux packages from Releases
+Linux packages from Releases:
 
 ```shell
 sudo dpkg -i leaker_*_linux_amd64.deb                  # Debian, Ubuntu
